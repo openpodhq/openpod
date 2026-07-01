@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openpod"
+version = "0.1.0"
+description = "Local-first CLI + MCP server that turns long-form audio/video into personalized, cited, navigable briefings — everything runs on your machine."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "OpenPod contributors" }]
+keywords = ["podcast", "transcript", "mcp", "cli", "youtube", "ai-agent", "local-first"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Text Processing",
+]
+
+# Core stays deliberately light: RSS parsing + YAML config. Everything that
+# needs the network, heavy ML, or the agent surface is an optional extra so the
+# library installs and runs (search, clip, deep-links) on the standard library.
+dependencies = [
+    "feedparser>=6.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+youtube = ["yt-dlp>=2024.1", "youtube-transcript-api>=0.6"]
+asr = ["faster-whisper>=1.0"]
+embeddings = ["numpy>=1.24"]
+mcp = ["mcp>=1.2"]
+all = [
+    "yt-dlp>=2024.1",
+    "youtube-transcript-api>=0.6",
+    "faster-whisper>=1.0",
+    "numpy>=1.24",
+    "mcp>=1.2",
+]
+dev = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/openpod/openpod"
+Repository = "https://github.com/openpod/openpod"
+
+[project.scripts]
+openpod = "openpod.cli:main"
+openpod-mcp = "openpod.mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/openpod"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
