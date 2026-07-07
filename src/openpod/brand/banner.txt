@@ -1,0 +1,4 @@
+  ┌─────────────────────────────────────────────────────┐
+  │  ▸ OpenPod   pull the minutes that matter — to you  │
+  └─────────────────────────────────────────────────────┘
+     v0.1 · local & private · run  openpod skills  to begin

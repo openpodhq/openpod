@@ -1,4 +1,4 @@
-from openpod.deeplink import build_deeplink, deeplink_card
+from openpod.deeplink import build_deeplink
 from openpod.models import SourceRef
 
 
@@ -20,11 +20,3 @@ def test_podcast_media_fragment():
 def test_no_deeplink_when_unavailable():
     assert build_deeplink(SourceRef(kind="file"), 10) is None
     assert build_deeplink(SourceRef(kind="youtube"), 10) is None  # no id
-
-
-def test_deeplink_card_contains_link_and_backlink():
-    src = SourceRef(kind="youtube", video_id="abc", title="Great Talk")
-    card = deeplink_card(src, 60, "a memorable quote")
-    assert "a memorable quote" in card
-    assert "t=60s" in card
-    assert "made with OpenPod" in card

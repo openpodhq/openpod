@@ -37,24 +37,3 @@ def build_deeplink(source: SourceRef, seconds: float) -> Optional[str]:
 
     # file / unknown / Apple etc. — no navigable public link.
     return None
-
-
-def deeplink_card(source: SourceRef, seconds: float, quote: str) -> str:
-    """A small shareable markdown card: quote + cited source + open-at link.
-
-    This is the *deep-link card* growth atom — it distributes a link, not the
-    content. Rendered as plain markdown so it works anywhere.
-    """
-    from .models import format_timestamp
-
-    link = build_deeplink(source, seconds)
-    ts = format_timestamp(seconds)
-    title = source.title or "this episode"
-    show = f" — {source.show}" if source.show else ""
-    open_at = f"[▶ open at {ts}]({link})" if link else f"open at {ts}"
-
-    return (
-        f"> {quote.strip()}\n\n"
-        f"*{title}{show}* · {open_at}\n\n"
-        f"<sub>made with OpenPod</sub>"
-    )

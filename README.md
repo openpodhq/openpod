@@ -1,115 +1,145 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/wordmark-blue-dark-636.png">
+    <img src="assets/brand/wordmark-blue-636.png" alt="OpenPod" width="212">
+  </picture>
+</p>
+
+<p align="center">
+  <img src="assets/demo.gif" alt="An AI agent pulls the minutes that matter from hundreds of hours across the shows you follow — every hit timestamped to verify" width="720">
+</p>
+
 # OpenPod
 
-**Turn long-form audio & video into personalized, cited, navigable briefings — entirely on your own machine.**
+**Pull the ten minutes that matter — to you.**
 
-OpenPod is a local-first CLI and [MCP](https://modelcontextprotocol.io) server for people who have to keep up with long-form content for work. You (or your AI agent) point it at a podcast, an RSS feed, or a YouTube link; OpenPod returns a timestamped transcript, extracts the key ideas, builds a navigable table of contents, and lets you jump straight to the moment in the native player — or cut a local clip.
+[![PyPI](https://img.shields.io/pypi/v/openpod)](https://pypi.org/project/openpod/) [![Python](https://img.shields.io/pypi/pyversions/openpod)](https://pypi.org/project/openpod/) [![CI](https://github.com/openpod/openpod/actions/workflows/ci.yml/badge.svg)](https://github.com/openpod/openpod/actions) [![License](https://img.shields.io/badge/license-AGPL--3.0-black)](LICENSE) [![Telemetry](https://img.shields.io/badge/telemetry-0-black)](#nothing-leaves-your-machine) [![MCP](https://img.shields.io/badge/MCP-server-black)](https://modelcontextprotocol.io)
 
-The important part: **nothing leaves your machine.** There is no OpenPod server, no account, no telemetry. The only "corpus" is your own library on disk, and it grows every session. Your AI agent brings the context and does the inference; OpenPod supplies extraction, structure, citations, deep-links, and local search.
+Hundreds of hours pile up across the shows you follow. OpenPod pulls out the minutes you're chasing — cited, timestamped to verify, extracted on your own machine — as the starting point your AI agent works from.
 
-> **Status:** Stage 1 — alpha. Local-pure, pull-only. Sync, always-on monitoring, and a hosted player are explicitly out of scope here.
+```bash
+pip install openpod
+openpod catch "https://example.com/podcast/feed.xml"
+```
+
+**Catch your first episode** — one command, about a minute. You get a timestamped transcript, the key ideas, and jump-to-moment links, all as plain files in a folder you own.
+
+`0 servers · 0 accounts · 0 telemetry · $0 to run · test suite runs fully offline`
+
+> **Status:** Stage 1 alpha. Local-pure, pull-only. It does what this page shows — nothing more yet.
 
 ---
 
-## Why it's built this way
+## The problem
 
-- **Local-pure.** No server, no central corpus, nothing of yours leaves your disk. That's both the privacy posture and the reason it's free to run.
-- **Pull, not push.** You (or your agent) invoke everything. No background monitoring.
-- **Artifacts, not telemetry.** OpenPod persists what you explicitly produce — transcripts, briefings, ideas, clips, notes — never behavioral tracking.
-- **Navigate, don't re-host.** Deep-link cards link to the moment in YouTube/Spotify/the open podcast enclosure. OpenPod never republishes anyone's audio.
-- **Agent-native.** The four primitives are exposed as MCP tools so Claude Code, Cowork, Codex, or any MCP client can drive the whole pipeline.
+You subscribe to twelve shows. You're forty episodes behind, every one is three hours long, and the one segment you actually needed last week — you can't find it, because nobody remembers a timestamp. So the backlog grows, the guilt compounds, and "I'll listen on the weekend" becomes a lie you tell yourself on Mondays.
 
-## Install
+Cloud summarizers answer this by asking you to upload what you listen to — and to trust their summary with no way to check it. OpenPod doesn't summarize your listening on someone else's computer. It gives **your** agent the ability to listen, cite, and link — locally.
 
-```bash
-pip install openpod                 # core: RSS ingest, local search, deep-links, clip
-pip install 'openpod[youtube]'      # + YouTube captions & audio (yt-dlp)
-pip install 'openpod[asr]'          # + local Whisper transcription (faster-whisper)
-pip install 'openpod[mcp]'          # + the MCP server
-pip install 'openpod[all]'          # everything
-```
+## What you get
 
-`ffmpeg` on your `PATH` is required for `clip`.
+Point OpenPod (or your agent) at an RSS feed or a YouTube link. In return:
 
-## Quick start
+- **A briefing you can verify.** Every claim carries a timestamp and a deep link. Don't trust the summary? Click and hear the source in the native player. OpenPod never re-hosts anyone's audio — it navigates you to the moment.
+- **A library that compounds.** Everything you catch lands in `.openpod/` as plain files — transcripts, briefings, ideas, notes, clips. Searchable across everything you've ever caught, keyword and semantic, all local.
+- **The five minutes, not the three hours.**
 
-```bash
-# Catch an episode — writes transcript, ideas, and a briefing scaffold to .openpod/
-openpod catch "https://example.com/podcast/feed.xml"
-openpod catch "https://www.youtube.com/watch?v=VIDEO_ID"
+## Nothing leaves your machine
 
-# Already have a transcript? Skip the network entirely.
-openpod catch "https://example.com/ep1" --kind podcast --transcript ./ep1.vtt
+There is no OpenPod server, no account, no telemetry — there is nothing to opt out of, because nothing phones home. The only corpus is your own library on disk. Publisher transcripts and captions are used when they exist; otherwise audio is transcribed locally with Whisper. Your agent brings the intelligence; OpenPod supplies extraction, structure, citations, deep links, and local search. That's the whole trade — and it's why running it costs nothing.
 
-# Search across everything you've ever caught (keyword + local semantic)
-openpod search "what did they say about raft consensus"
+## Your agent can drive all of it
 
-# Jump-to-moment timestamps with deep-links
-openpod export-timestamps "test-pod/episode-one-consensus"
-
-# Cut a local, sentence-snapped clip (needs ffmpeg) + a shareable deep-link card
-openpod clip "test-pod/episode-one-consensus" 320 385
-
-# Follow feeds locally and see what's new
-openpod follow "https://example.com/feed.xml"
-openpod digest
-
-# A local, user-owned persona your agent reads to personalize briefings
-openpod persona init
-openpod persona derive
-```
-
-Everything lands in a plain, user-owned directory tree:
-
-```
-.openpod/
-  persona.md              # who you are (evolving, local)
-  follows.yaml            # subscribed RSS + YouTube channels
-  library/
-    <show>/<episode>/
-      meta.json           # source + bookkeeping
-      transcript.json     # timed cues
-      briefing.md         # cited, personalized (authored by your agent)
-      ideas.md            # key ideas, each with a deep-link
-      clips/              # your saved media + share cards
-      notes.md            # your annotations
-  index/                  # local search index (SQLite FTS + embeddings)
-```
-
-Want it on two machines? Put the tree in git or Dropbox yourself. OpenPod won't sync it for you.
-
-## The four primitives (CLI & MCP)
-
-| Tool | Does | Writes |
-|---|---|---|
-| `catch <link>` | Ingest → transcribe → structure → brief | `transcript.json`, `ideas.md`, `briefing.md` |
-| `clip <entry> <start> <end>` | Sentence-snapped cut + deep-link card | media file in `clips/` |
-| `export_timestamps <entry>` | Timed segments + deep-links | JSON / Markdown |
-| `search <query>` | Retrieve across the local library | ranked cues with deep-links |
-
-Plus `follow` / `digest` and `persona` helpers.
-
-## Use it from an AI agent (MCP)
-
-Run the server:
+OpenPod ships an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Cowork, Codex — any MCP client — can catch, search, clip, and brief by name:
 
 ```bash
 openpod-mcp
 ```
 
-Register it with an MCP client (e.g. Claude Code / Cowork). Example config:
-
 ```json
 {
   "mcpServers": {
-    "openpod": {
-      "command": "openpod-mcp",
-      "env": { "OPENPOD_HOME": "/path/to/your/workspace" }
-    }
+    "openpod": { "command": "openpod-mcp", "env": { "OPENPOD_HOME": "/path/to/your/workspace" } }
   }
 }
 ```
 
-The agent gets `catch`, `search`, `export_timestamps`, `clip`, `get_briefing`, `persona`, `follow`, and `digest`. A typical flow: the agent `catch`es a link, reads the ideas + TOC + transcript via `get_briefing`, reads your `persona`, and writes the personalized, cited briefing back into `briefing.md`.
+Say *"catch me up on this episode"* and the agent runs `catch`, reads your local persona file, and writes a cited briefing back into your library — then hands you the path. Mid-conversation, no dashboard, no copy-paste.
+
+## The four primitives
+
+| Tool | Does | Writes |
+|---|---|---|
+| `catch <link>` | Ingest → transcribe → structure → brief | `transcript.json`, `ideas.md`, `briefing.md` |
+| `search <query>` | Retrieve across your local library | ranked cues with deep links |
+| `export_timestamps <entry>` | Navigable TOC with deep links | JSON / Markdown |
+| `clip <entry> <start> <end>` | Sentence-snapped local cut + shareable deep-link card | media in `clips/`, card |
+
+Every mutating command prints the path it wrote — the output of an action is the address of the artifact it produced. Every read command takes `--json`, shaped identically to the matching MCP tool.
+
+## Skills — the features, by name
+
+Primitives are the API; **skills are the product.** Each is a versioned instruction bundle (`openpod skills` lists them; the MCP server exposes them as prompts) that tells an agent how to compose the primitives and report back:
+
+| Skill | You ask | It writes |
+|---|---|---|
+| **Catch Me Up** | "Brief me on this episode" | `briefing.md`, `ideas.md` |
+| **Find the Moment** | "Where did they talk about X?" | deep-linked hits |
+| **What's New** | "What dropped in my feeds?" | digest |
+| **Cut the Clip** | "Pull the shareable minute" | media + share card |
+| **Chapter It** | "Give me a navigable TOC" | timestamps (md/json) |
+| **Follow This** | "Keep me on this show" | `follows.yaml` entry |
+| **Set Up My Persona** | "Learn who I am" | `persona.md` — yours, local |
+| **Sharpen My Persona** | "Update what you know about me" | persona Derived block |
+| **Bring In My World** | "Import my subscriptions" | `imports/`, `follows.yaml` |
+
+## More things it does
+
+```bash
+# Already have a transcript? Skip the network entirely.
+openpod catch "https://example.com/ep1" --kind podcast --transcript ./ep1.vtt
+
+# Search everything you've ever caught (keyword + local semantic)
+openpod search "what did they say about raft consensus"
+
+# Follow feeds locally; see what's new on your schedule — nothing polls in the background
+openpod follow "https://example.com/feed.xml"
+openpod digest
+
+# Cut a local, sentence-snapped clip (needs ffmpeg) + a shareable deep-link card
+openpod clip "test-pod/episode-one-consensus" 320 385
+
+# Import subscriptions from a file you export (OPML) — point-in-time, opt-in
+openpod import ~/Downloads/overcast.opml
+
+# Annotate; notes feed future personalization
+openpod note "test-pod/episode-one-consensus" "the Raft segment matters for our design"
+```
+
+Everything lands in a plain, user-owned tree:
+
+```
+.openpod/
+  persona.md              # who you are (evolving, local)
+  follows.yaml            # subscribed RSS + YouTube channels
+  library/<show>/<episode>/
+    transcript.json  briefing.md  ideas.md  notes.md  clips/
+  index/                  # local search index (SQLite FTS + embeddings)
+```
+
+Want it on two machines? Put the tree in git or Dropbox yourself. OpenPod won't sync it for you.
+
+## Install options
+
+```bash
+pip install openpod                 # core: RSS ingest, local search, deep links, clip
+pip install 'openpod[youtube]'      # + YouTube captions & audio
+pip install 'openpod[asr]'          # + local Whisper transcription
+pip install 'openpod[mcp]'          # + the MCP server
+pip install 'openpod[all]'          # everything
+```
+
+`ffmpeg` on your `PATH` is required for `clip`.
 
 ## Use it as a library
 
@@ -123,12 +153,24 @@ for hit in search("consensus algorithms"):
     print(hit.show, hit.start, hit.deeplink)
 ```
 
-## How transcription is chosen
+## Trust & posture FAQ
 
-1. A publisher-provided **timed transcript** (`podcast:transcript`, YouTube captions) is used when available — free, fast, good enough for navigation.
-2. Otherwise the audio is downloaded and transcribed **locally** with Whisper (`asr` extra). Nothing is uploaded.
+**Does OpenPod download or re-host other people's content?**
+It navigates, it doesn't republish. Deep links open the moment in YouTube, Spotify, or the open podcast enclosure. Podcast RSS — content published for open distribution — is the primary surface; YouTube support is an optional module that uses official captions, or local transcription of audio you can already access. OpenPod never touches DRM, paywalls, or age gates.
 
-Caption-cue timing (±2–4s) is fine for jumping to a moment; `clip` snaps cut boundaries to cue edges so clips land on sentence boundaries.
+**What data do you collect about me?**
+None. There is no endpoint to send it to.
+
+**How is transcription chosen?**
+Publisher-provided timed transcripts and captions first — free, fast, good for navigation (±2–4s cue timing). Otherwise local Whisper (`asr` extra). Nothing is uploaded either way. `clip` snaps cuts to cue boundaries so clips land on sentences.
+
+**Why AGPL?**
+[AGPL-3.0-or-later](LICENSE): if someone runs a modified OpenPod as a network service, they must offer users their source. The engine stays open; nobody resells it closed.
+
+**Can I hack on it without heavy models or network?**
+Yes — the test suite runs fully offline against fixtures.
+
+Built by Yoav — building OpenPod in public.
 
 ## Development
 
@@ -140,10 +182,14 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The test suite runs fully offline against fixtures — no network, no heavy models.
+Contributions that package or connect OpenPod travel furthest: Homebrew formula, Docker image, MCP client recipes, note-app bridges. Open an issue first; response is fast.
 
-## License
+---
 
-[AGPL-3.0-or-later](LICENSE). If you run a modified version as a network service, the AGPL requires you to offer users your source. This keeps the engine open and stops it being resold as a closed service.
+**Long-form is a lot. OpenPod pulls the ten minutes that matter — to you — with a link straight to every one.**
 
-Long-form is a lot. OpenPod gives you the five minutes that matter — and a link straight to them.
+```bash
+pip install openpod
+```
+
+If it saved you an hour this week, [star the repo](../../stargazers) — stars are how the next person finds it.

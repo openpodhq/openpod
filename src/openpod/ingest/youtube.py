@@ -64,7 +64,10 @@ def _captions(video_id: str, languages: list[str]) -> Optional[Transcript]:
 
 
 def _enrich_metadata(source: SourceRef) -> None:
-    """Best-effort title/show/duration via yt-dlp (metadata only, no download)."""
+    """Best-effort title/show/duration/chapters via yt-dlp (metadata only, no
+    download). Chapters are the creator's own segment boundaries — the anchors
+    deep-links should prefer — taken from YouTube's chapter markers or, when
+    absent, parsed out of the description's timestamp lines."""
     try:
         import yt_dlp  # type: ignore
     except ImportError:
@@ -76,5 +79,12 @@ def _enrich_metadata(source: SourceRef) -> None:
         source.title = info.get("title") or source.title
         source.show = info.get("uploader") or info.get("channel") or source.show
         source.duration = info.get("duration") or source.duration
+        chapters = info.get("chapters")
+        if not chapters and info.get("description"):
+            from ..segments import parse_description_chapters
+
+            chapters = parse_description_chapters(info["description"],
+                                                  source.duration)
+        source.chapters = chapters or source.chapters
     except Exception:
         return

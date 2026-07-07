@@ -23,10 +23,14 @@ class Follow:
     url: str
     kind: str
     title: Optional[str] = None
+    # Provenance: where this follow came from, e.g. "opml:overcast". Absent for
+    # follows the user added by hand, so imports stay visible and trimmable.
+    source: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in {"url": self.url, "kind": self.kind,
-                                  "title": self.title}.items() if v}
+                                  "title": self.title,
+                                  "source": self.source}.items() if v}
 
 
 @dataclass
@@ -36,6 +40,10 @@ class DigestItem:
     link: Optional[str]
     published: Optional[str]
     kind: str
+    # False when the user follows this show but has never caught an episode
+    # of it — the unlistened tail. That's the discovery pool: content worth
+    # sampling *because* it's outside the rotation, not despite it.
+    in_rotation: bool = False
 
 
 class Follows:
@@ -68,12 +76,14 @@ class Follows:
 
     # -- mutations ---------------------------------------------------------- #
 
-    def add(self, url: str, *, title: Optional[str] = None) -> Follow:
+    def add(self, url: str, *, title: Optional[str] = None,
+            source: Optional[str] = None) -> Follow:
         url = _normalize(url)
         follows = self._load()
         if any(f.url == url for f in follows):
             return next(f for f in follows if f.url == url)
-        follow = Follow(url=url, kind=_follow_kind(url), title=title)
+        follow = Follow(url=url, kind=_follow_kind(url), title=title,
+                        source=source)
         follows.append(follow)
         self._save(follows)
         return follow
@@ -90,20 +100,31 @@ class Follows:
     # -- discovery ---------------------------------------------------------- #
 
     def poll(self, *, per_feed: int = 5) -> list[DigestItem]:
-        """Fetch recent items across all follows. Best-effort; skips failures."""
-        from .ingest.rss import load_feed
+        """Fetch recent items across all follows. Best-effort; skips failures.
 
+        Each item is marked ``in_rotation`` by whether the user has ever
+        caught an episode of that show, so a digest can present "your
+        rotation" and "new to you" separately instead of letting familiarity
+        rank everything."""
+        from .ingest import rss
+        from .library import Library
+        from .models import slugify
+
+        caught_shows = {e.show_slug for e in Library(self.workspace)}
         items: list[DigestItem] = []
         for follow in self._load():
             try:
-                feed = load_feed(follow.url)
+                feed = rss.load_feed(follow.url)
             except Exception:
                 continue
+            show = follow.title or feed.title
+            in_rotation = slugify(show, fallback="show") in caught_shows
             for it in feed.items[:per_feed]:
                 items.append(DigestItem(
-                    show=follow.title or feed.title, title=it.title,
+                    show=show, title=it.title,
                     link=it.page_url or it.enclosure_url,
                     published=it.published, kind=follow.kind,
+                    in_rotation=in_rotation,
                 ))
         return items
 

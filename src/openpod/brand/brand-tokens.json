@@ -1,0 +1,69 @@
+{
+  "name": "OpenPod",
+  "wordmark": "OpenPod",
+  "cli_command": "openpod",
+  "tagline": "Pull the ten minutes that matter — to you.",
+  "principle": "Black, white, and one blue. The blue only ever marks the moment.",
+  "color": {
+    "ink": {
+      "hex": "#0E0E0E",
+      "role": "foreground on light / background on dark"
+    },
+    "paper": {
+      "hex": "#FCFCFB",
+      "role": "background on light"
+    },
+    "blue_light": {
+      "hex": "#0969DA",
+      "role": "accent on white (GitHub light link token)",
+      "ansi_256": 33,
+      "ansi_24bit": "38;2;9;105;218"
+    },
+    "blue_dark": {
+      "hex": "#58A6FF",
+      "role": "accent on near-black (GitHub dark link token)",
+      "ansi_256": 75,
+      "ansi_24bit": "38;2;88;166;255"
+    }
+  },
+  "accent_rule": "Reserve blue for timestamps, deep-links, the jump affordance, and the CTA. Nothing else.",
+  "type": {
+    "mono": {
+      "family": "IBM Plex Mono",
+      "weights": [
+        400,
+        500,
+        600
+      ],
+      "license": "OFL",
+      "role": "product's native tongue — CLI, timestamps, paths, UI labels"
+    },
+    "sans": {
+      "family": "IBM Plex Sans",
+      "weights": [
+        400,
+        500,
+        600,
+        700
+      ],
+      "license": "OFL",
+      "role": "headlines & captions"
+    }
+  },
+  "signature": {
+    "glyph": "▸",
+    "unicode": "U+25B8",
+    "pattern": "▸ m:ss",
+    "examples": [
+      "▸ 12:34",
+      "▸ 41:07"
+    ],
+    "rule": "Always blue, always a live deep-link. The one visual idea we own."
+  },
+  "logo": {
+    "concept": "playhead landing on a position line (jump-to-moment)",
+    "viewBox": "0 0 24 24",
+    "clear_space": "the height of the playhead triangle on every side",
+    "reproduction": "one-color first (black / white / blue); full-color is the exception"
+  }
+}

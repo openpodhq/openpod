@@ -174,15 +174,23 @@ class SearchIndex:
     def _to_hit(self, score: float, row: dict) -> SearchHit:
         deeplink = None
         entry = _load_entry(self.workspace, row["entry_id"])
-        if entry is not None:
-            src = entry.source()
-            if src is not None:
-                deeplink = build_deeplink(src, row["start"])
-        return SearchHit(
+        src = entry.source() if entry is not None else None
+        if src is not None:
+            deeplink = build_deeplink(src, row["start"])
+        hit = SearchHit(
             show=row["show"], episode=row["episode"], text=row["text"],
             start=row["start"], score=round(score, 4), deeplink=deeplink,
             entry_id=row["entry_id"],
         )
+        if entry is not None:
+            # Attach the full anchor ladder — creator chapter, detected beat,
+            # exact moment — so the caller can offer labeled landings instead
+            # of dropping the reader mid-sentence.
+            from ..segments import annotate
+
+            annotate([hit], entry.read_segments(), src,
+                     chapters=entry.read_chapters())
+        return hit
 
     def close(self) -> None:
         self._db.close()

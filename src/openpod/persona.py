@@ -16,12 +16,33 @@ from .briefing import _tokens
 from .config import Workspace
 from .library import Library
 
+# The two machine-owned persona blocks. Everything above/outside them is the
+# human's voice and is never rewritten by OpenPod code (Library UI spec §2.2:
+# "`persona derive` is idempotent and non-destructive above the marker").
+DERIVED_MARKER = "## Derived from my library"
+IMPORTED_MARKER = "## Imported interests (opt-in)"
+MACHINE_MARKERS = (IMPORTED_MARKER, DERIVED_MARKER)
+
+# The interview is guess-and-confirm, not a form. Before asking anything, the
+# agent runs the workspace evidence scan (`openpod persona scan` / the
+# `persona_scan` tool) and presents each question as **multi-select options
+# mined from that evidence**, with a free-text escape hatch. The user's job is
+# to pick, not to type. ("Whose podcasts do you trust" was retired: the
+# follows list and OPML import already answer it better than a question can.)
 INTERVIEW_QUESTIONS = [
-    "What is your role, and what are you responsible for day to day?",
-    "What are the 2–3 projects or problems you're actively working on right now?",
-    "Which topics do you want to keep up with for work? Which do you want to filter out?",
-    "Whose podcasts / channels do you trust most, and why?",
-    "When you listen to something long, what are you usually hoping to extract?",
+    "Role — what are you responsible for? (guess from the workspace: repos, "
+    "docs, CLAUDE.md; offer options like founder / PM / engineer / analyst)",
+    "Current projects — which of these are you actively working on? "
+    "(multi-select from scanned project folders and recent docs)",
+    "Topics to amplify — which of these should briefings go deep on, and "
+    "what angle? (multi-select from doc titles, library themes, follows; "
+    "suggest an angle per topic, e.g. 'OSS strategy → licensing & launch "
+    "playbooks')",
+    "Topics to filter — which of these should be compressed or skipped? "
+    "(multi-select; offer plausible noise for this user, not a blank box)",
+    "What to extract from long-form — decisions, named tools, numbers, "
+    "frameworks, contrarian takes, market signals, the 5 minutes that "
+    "change your mind? (multi-select)",
 ]
 
 _TEMPLATE = """\
@@ -40,7 +61,9 @@ triage. Edit it freely. OpenPod never uploads it._
 <!-- Topics to surface and go deep on. -->
 
 ## Not interested (filter)
-<!-- Topics to skip or compress hard. -->
+<!-- Topics to skip or compress hard. Topics, not shows: an unfamiliar
+     source is discovery, not noise — filtering happens on what's said,
+     never on who says it. -->
 
 ## What I want from long-form
 <!-- e.g. "the 5 minutes that change my mind", decisions, named tools, numbers. -->
@@ -90,18 +113,47 @@ class Persona:
                 terms.update(_tokens(transcript.text()))
 
         block = _render_derived(n_episodes, shows, terms, top_terms)
-        if self.exists():
-            self._replace_derived(block)
-        else:
-            self.init()
-            self._replace_derived(block)
+        self.replace_section(DERIVED_MARKER, block)
         return block
 
-    def _replace_derived(self, block: str) -> None:
+    def replace_section(self, marker: str, block: str) -> None:
+        """Replace the body of one machine-owned section, byte-preserving
+        everything else — the human sections and the other machine block."""
+        if marker not in MACHINE_MARKERS:
+            raise ValueError(f"not a machine-owned persona section: {marker!r}")
+        if not self.exists():
+            self.init()
         text = self.read() or _TEMPLATE
-        marker = "## Derived from my library"
-        head = text.split(marker)[0].rstrip()
-        self.path.write_text(f"{head}\n\n{marker}\n\n{block}\n", encoding="utf-8")
+        self.path.write_text(_splice_section(text, marker, block),
+                             encoding="utf-8")
+
+
+def _splice_section(text: str, marker: str, block: str) -> str:
+    """Return ``text`` with the section under ``marker`` replaced by ``block``.
+
+    The section body runs from the marker line to the next ``## `` heading (or
+    EOF). If the marker is missing it is inserted: ``IMPORTED_MARKER`` goes just
+    above ``DERIVED_MARKER`` when present, otherwise the section is appended.
+    Everything outside the section is preserved verbatim.
+    """
+    lines = text.splitlines()
+    body = ["", *block.rstrip("\n").splitlines(), ""]
+
+    start = next((i for i, l in enumerate(lines) if l.strip() == marker), None)
+    if start is not None:
+        end = next((i for i in range(start + 1, len(lines))
+                    if lines[i].startswith("## ")), len(lines))
+        lines = lines[:start + 1] + body + lines[end:]
+    else:
+        insert_at = len(lines)
+        if marker == IMPORTED_MARKER:
+            derived = next((i for i, l in enumerate(lines)
+                            if l.strip() == DERIVED_MARKER), None)
+            if derived is not None:
+                insert_at = derived
+        lines = lines[:insert_at] + [marker] + body + lines[insert_at:]
+
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def _render_derived(n_episodes: int, shows: Counter, terms: Counter,

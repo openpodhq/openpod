@@ -1,4 +1,5 @@
 import textwrap
+import wave
 from pathlib import Path
 
 import pytest
@@ -54,4 +55,17 @@ def workspace(tmp_path) -> Workspace:
 def vtt_file(tmp_path) -> Path:
     p = tmp_path / "sample.vtt"
     p.write_text(SAMPLE_VTT, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def tiny_wav_file(tmp_path) -> Path:
+    """A few seconds of silence — enough for `clip()` to cut from, without a
+    real download or network fetch."""
+    p = tmp_path / "sample.wav"
+    with wave.open(str(p), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(b"\x00\x00" * 8000 * 10)  # 10s of silence
     return p

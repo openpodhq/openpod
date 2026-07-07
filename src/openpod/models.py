@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field, asdict
 from typing import Any, Iterable, Optional
 
+from .theme import moment_plain
+
 
 # --------------------------------------------------------------------------- #
 # Source references
@@ -42,6 +44,9 @@ class SourceRef:
     # Playback / extraction.
     audio_url: Optional[str] = None           # open enclosure URL (podcasts)
     duration: Optional[float] = None          # seconds, if known
+    # Creator-provided chapter markers, when the platform exposes them
+    # (YouTube chapters / description timestamps). Each: {start, end?, title}.
+    chapters: Optional[list] = None
 
     def __post_init__(self) -> None:
         if self.kind not in SOURCE_KINDS:
@@ -166,22 +171,123 @@ class Transcript:
 
 
 @dataclass
+class Segment:
+    """A coherent stretch of an episode — the unit deep-links should land on.
+
+    ``origin`` records where the boundary came from: ``"chapters"`` when the
+    creator provided it (YouTube chapters / description timestamps) or
+    ``"topic"`` when OpenPod detected it locally from the transcript.
+    """
+
+    start: float
+    end: Optional[float] = None
+    title: Optional[str] = None
+    origin: str = "topic"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: v for k, v in asdict(self).items() if v is not None}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Segment":
+        return cls(start=float(d["start"]),
+                   end=float(d["end"]) if d.get("end") is not None else None,
+                   title=d.get("title"), origin=d.get("origin", "topic"))
+
+
+@dataclass
 class Idea:
-    """A salient extracted moment, each carrying a deep-link back to the source."""
+    """A salient extracted moment, carrying up to three deep-link anchors.
+
+    Different readers want different landings, so we give all that exist and
+    label them: ``chapter_*`` is the creator's own chapter containing the
+    moment ("take me to the topic"), ``segment_*`` is the detected beat where
+    the idea starts being articulated ("play the argument from its start"),
+    and ``deeplink`` is the exact sentence ("show me where they said it").
+    """
 
     text: str
     start: float
     end: Optional[float] = None
     deeplink: Optional[str] = None
     score: float = 0.0
+    segment_start: Optional[float] = None
+    segment_title: Optional[str] = None
+    segment_deeplink: Optional[str] = None
+    chapter_start: Optional[float] = None
+    chapter_title: Optional[str] = None
+    chapter_deeplink: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {k: v for k, v in asdict(self).items() if v is not None}
+        d = {k: v for k, v in asdict(self).items() if v is not None}
+        d["moment"] = moment_plain(self.start)
+        return d
+
+
+@dataclass
+class ListenRecord:
+    """A cue the player reported as *heard* (§6.6), pulled back into the library.
+
+    Mirrors the player's exported ``heardCue`` shape so heard content can be
+    merged into the local, offline library. ``episode_key`` is the cross-codebase
+    identity (see :mod:`openpod.identity`); ``cue_start``/``cue_end`` are seconds.
+    """
+
+    episode_key: str
+    cue_start: float
+    cue_end: Optional[float] = None
+    text: str = ""
+    first_heard_at: Optional[str] = None
+    heard_count: int = 1
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "episode_key": self.episode_key,
+            "cue_start": round(self.cue_start, 3),
+            "text": self.text,
+            "heard_count": self.heard_count,
+        }
+        if self.cue_end is not None:
+            d["cue_end"] = round(self.cue_end, 3)
+        if self.first_heard_at is not None:
+            d["first_heard_at"] = self.first_heard_at
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "ListenRecord":
+        return cls(
+            episode_key=str(d.get("episode_key", "")),
+            cue_start=float(d.get("cue_start", 0.0)),
+            cue_end=float(d["cue_end"]) if d.get("cue_end") is not None else None,
+            text=str(d.get("text", "")),
+            first_heard_at=d.get("first_heard_at"),
+            heard_count=int(d.get("heard_count", 1)),
+        )
+
+    @classmethod
+    def from_player(cls, d: dict[str, Any]) -> "ListenRecord":
+        """Build from the player's camelCase export shape (``heardCue``)."""
+        return cls(
+            episode_key=str(d.get("episodeKey", d.get("episode_key", ""))),
+            cue_start=float(d.get("cueStart", d.get("cue_start", 0.0))),
+            cue_end=(
+                float(d["cueEnd"])
+                if d.get("cueEnd") is not None
+                else (float(d["cue_end"]) if d.get("cue_end") is not None else None)
+            ),
+            text=str(d.get("text", "")),
+            first_heard_at=d.get("firstHeardAt", d.get("first_heard_at")),
+            heard_count=int(d.get("heardCount", d.get("heard_count", 1))),
+        )
 
 
 @dataclass
 class SearchHit:
-    """One result from a local library search."""
+    """One result from a local library search.
+
+    Carries the same three-anchor ladder as :class:`Idea`: ``chapter_*``
+    (creator's chapter), ``segment_*`` (detected beat — prefer when citing),
+    and ``deeplink`` (the exact matched cue).
+    """
 
     show: str
     episode: str
@@ -190,9 +296,17 @@ class SearchHit:
     score: float = 0.0
     deeplink: Optional[str] = None
     entry_id: Optional[str] = None
+    segment_start: Optional[float] = None
+    segment_title: Optional[str] = None
+    segment_deeplink: Optional[str] = None
+    chapter_start: Optional[float] = None
+    chapter_title: Optional[str] = None
+    chapter_deeplink: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {k: v for k, v in asdict(self).items() if v is not None}
+        d = {k: v for k, v in asdict(self).items() if v is not None}
+        d["moment"] = moment_plain(self.start)
+        return d
 
 
 # --------------------------------------------------------------------------- #

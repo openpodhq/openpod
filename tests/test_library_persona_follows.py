@@ -46,3 +46,24 @@ def test_persona_init_and_derive(workspace, vtt_file):
     block = persona.derive()
     assert "Episodes caught" in block
     assert "Episodes caught" in persona.read()
+
+
+def test_digest_marks_unlistened_follows_as_new_to_you(workspace, monkeypatch):
+    """The discovery asymmetry: follows never caught are the pool worth
+    sampling, so digest items carry in_rotation for the agent to split on."""
+    from openpod.ingest import rss
+    from openpod.library import Library
+    from openpod.models import SourceRef
+
+    # one show actually in the rotation (caught before)
+    entry = Library(workspace).entry("Test Pod", "ep0")
+    entry.write_meta(SourceRef(kind="podcast", show="Test Pod"))
+
+    monkeypatch.setattr(rss, "load_feed",
+                        lambda url: rss.parse_feed(SAMPLE_RSS))
+    f = Follows(workspace)
+    f.add("https://example.com/a.xml", title="Test Pod")
+    f.add("https://example.com/b.xml", title="Other Show")
+
+    rotation = {i.show: i.in_rotation for i in f.poll()}
+    assert rotation == {"Test Pod": True, "Other Show": False}

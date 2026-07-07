@@ -60,6 +60,10 @@ class Workspace:
         return self.index_dir / "search.db"
 
     @property
+    def imports_dir(self) -> Path:
+        return self.dot / "imports"
+
+    @property
     def persona_file(self) -> Path:
         return self.dot / "persona.md"
 

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from .config import Workspace
-from .models import SourceRef, Transcript, slugify
+from .models import Segment, SourceRef, Transcript, slugify
 
 
 @dataclass
@@ -119,6 +119,36 @@ class LibraryEntry:
             json.dumps(transcript.to_dict(), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+
+    # -- segments ------------------------------------------------------------ #
+
+    def read_segments(self) -> list[Segment]:
+        """The episode's beat boundaries (persisted at catch time). Entries
+        caught before segmentation existed get them recomputed on the fly —
+        without writing, so reads stay reads."""
+        meta = self.read_meta()
+        if "segments" in meta:
+            return [Segment.from_dict(s) for s in meta["segments"]]
+        transcript = self.read_transcript()
+        if transcript is None:
+            return []
+        from .segments import segment_transcript
+
+        src = self.source()
+        return segment_transcript(transcript,
+                                  chapters=src.chapters if src else None)
+
+    def read_chapters(self) -> list[Segment]:
+        """The creator-chapter layer (verbatim), recovered from the source
+        metadata. Empty when the source shipped no chapters."""
+        src = self.source()
+        if src is None or not src.chapters:
+            return []
+        from .segments import chapters_as_segments
+
+        transcript = self.read_transcript()
+        return chapters_as_segments(src.chapters,
+                                    transcript.duration if transcript else None)
 
     # -- markdown artifacts ------------------------------------------------- #
 

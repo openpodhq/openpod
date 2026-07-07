@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{EPISODE}} — OpenPod</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: {{PAPER}}; }
+  .op-mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .op-sans { font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif; }
+</style>
+</head>
+<body>
+<div class="op-mono" style="width:1200px; height:630px; background:{{PAPER}}; overflow:hidden;">
+  <div style="height:100%; padding:60px 64px; display:flex; flex-direction:column; justify-content:space-between;">
+    <div>
+      <div style="font-size:16px; letter-spacing:0.24em; text-transform:uppercase; color:{{INK}}; font-weight:600; margin-bottom:10px;">{{SHOW}}</div>
+      <div class="op-sans" style="font-size:22px; color:#4a4a48; font-weight:500;">{{EPISODE}}</div>
+      <div style="width:52px; height:2px; background:#d8d8d5; margin-top:22px;"></div>
+    </div>
+    <div style="max-width:940px;">
+      <div class="op-sans" style="font-weight:600; font-size:44px; line-height:1.16; letter-spacing:-0.018em; color:{{INK}};">&ldquo;{{QUOTE}}&rdquo;</div>
+    </div>
+    <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+      {{MOMENT_BLOCK}}
+      <a href="{{BACKLINK}}" style="display:flex; align-items:center; gap:8px; color:#8a8a88; text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M6 5 L15 12 L6 19 Z" fill="currentColor"></path><rect x="18" y="4" width="2.6" height="16" fill="currentColor"></rect></svg>
+        <span style="font-size:13px;">cited with <span style="color:#5a5a58; font-weight:500;">OpenPod</span></span>
+      </a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

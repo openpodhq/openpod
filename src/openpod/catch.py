@@ -17,10 +17,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 from . import briefing as _briefing
+from . import segments as _segments
 from .config import Workspace
 from .ingest import resolve
 from .library import Library, LibraryEntry
-from .models import Idea, SourceRef, Transcript
+from .models import Idea, Segment, SourceRef, Transcript
 
 
 @dataclass
@@ -30,6 +31,8 @@ class CatchResult:
     transcript: Transcript
     ideas: list[Idea]
     toc: list[Idea]
+    segments: list[Segment]           # the beats layer (detected articulation)
+    chapters: list[Segment]           # the creator layer ([] if none shipped)
 
     @property
     def entry_id(self) -> str:
@@ -50,12 +53,21 @@ def catch(link: str, *, workspace: Optional[Workspace] = None,
     if not len(transcript):
         raise ValueError(f"no transcript could be produced for: {link}")
 
+    # Two anchor layers: the creator's chapters verbatim, and the detected
+    # beats (topic detection, run inside over-long chapters). Deep-links
+    # carry both, plus the exact moment — the reader picks the granularity.
+    chapters = _segments.chapters_as_segments(source.chapters,
+                                              transcript.duration) \
+        if source.chapters else []
+    segments = _segments.segment_transcript(transcript, chapters=source.chapters)
+
     entry = library.entry_for(source)
-    entry.write_meta(source)
+    entry.write_meta(source, segments=[s.to_dict() for s in segments])
     entry.write_transcript(transcript)
 
     ideas = _briefing.extract_ideas(transcript, source, k=k_ideas)
-    toc = _briefing.build_toc(transcript, source)
+    _segments.annotate(ideas, segments, source, chapters=chapters)
+    toc = _briefing.build_toc(transcript, source, structure=segments)
     persona = _read_persona(ws)
 
     entry.write_ideas(_briefing.ideas_markdown(ideas, source))
@@ -67,7 +79,8 @@ def catch(link: str, *, workspace: Optional[Workspace] = None,
         SearchIndex(ws).add_entry(entry)
 
     return CatchResult(entry=entry, source=source, transcript=transcript,
-                      ideas=ideas, toc=toc)
+                      ideas=ideas, toc=toc, segments=segments,
+                      chapters=chapters)
 
 
 def _read_persona(workspace: Workspace) -> Optional[str]:

@@ -18,8 +18,9 @@ from pathlib import Path
 from typing import Optional
 
 from .asr import download_audio, has_ffmpeg
+from .card import render_card_html, render_card_png
 from .config import Workspace
-from .deeplink import build_deeplink, deeplink_card
+from .deeplink import build_deeplink
 from .library import Library, LibraryEntry
 from .models import Transcript, format_timestamp, slugify
 
@@ -31,7 +32,8 @@ class ClipResult:
     end: float
     quote: str
     deeplink: Optional[str]
-    card_path: Optional[Path] = None
+    card_path: Optional[Path] = None       # card.html — always written when make_card
+    card_png_path: Optional[Path] = None   # card.png — best-effort, needs openpod[card-png]
 
 
 def snap_to_cues(transcript: Transcript, start: float, end: float,
@@ -110,12 +112,18 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
     )
 
     card_path = None
+    card_png_path = None
     if make_card and source is not None and quote:
-        card_path = entry.clips_dir / f"{stem}.card.md"
-        card_path.write_text(deeplink_card(source, start, quote), encoding="utf-8")
+        card_path = entry.clips_dir / f"{stem}.card.html"
+        card_path.write_text(render_card_html(source, start, quote, deeplink),
+                             encoding="utf-8")
+        png_candidate = entry.clips_dir / f"{stem}.card.png"
+        if render_card_png(card_path, png_candidate):
+            card_png_path = png_candidate
 
     return ClipResult(path=out, start=start, end=end, quote=quote,
-                     deeplink=deeplink, card_path=card_path)
+                     deeplink=deeplink, card_path=card_path,
+                     card_png_path=card_png_path)
 
 
 def _ffmpeg_cut(media: str, start: float, end: float, out: Path,
