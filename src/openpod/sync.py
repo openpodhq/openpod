@@ -752,20 +752,41 @@ def _apply_heard(
 
 
 def _index_heard(ws: Workspace, entry, records: list[ListenRecord]) -> int:
-    """Fold heard cues into the local search index so they're findable offline.
+    """Merge heard-cue text into the entry's transcript, then reindex (task 6.6).
 
-    The transcript is the primary index source; heard cues carry the same text,
-    so re-indexing the entry (which already contains those cues) is enough to
-    keep search coverage. We reindex the entry best-effort — if the embeddings
-    extra isn't installed or the index is unavailable, we skip silently, since
-    listened.json is the source of truth and search is an enhancement.
+    Heard content must be findable offline even when it isn't already in the
+    local transcript — e.g. the transcript came from server-side ASR the OSS
+    never pulled, or the entry was caught with a thin/placeholder transcript.
+    So we UNION the heard cues into transcript.json (by start time, never
+    overwriting an existing cue), then reindex. Idempotent across pulls. Search
+    is best-effort: if the index/embeddings extra is unavailable we still wrote
+    the merged transcript + listened.json, which are the source of truth.
     """
+    from .models import Cue, Transcript
+
+    transcript = entry.read_transcript()
+    by_start: dict[float, Cue] = {
+        round(c.start, 1): c for c in (transcript.cues if transcript else [])
+    }
+    changed = False
+    for r in records:
+        key = round(r.cue_start, 1)
+        if key not in by_start and r.text.strip():
+            by_start[key] = Cue(start=r.cue_start, end=r.cue_end, text=r.text)
+            changed = True
+    if changed:
+        merged = [by_start[k] for k in sorted(by_start)]
+        source = transcript.source if transcript else "player:heard"
+        entry.write_transcript(Transcript(cues=merged, source=source))
+
     try:
         from .search import SearchIndex
 
         idx = SearchIndex(ws)
         try:
-            if not idx.is_indexed(entry.entry_id):
+            # Force a reindex when we changed the transcript; otherwise index
+            # once if it isn't already covered.
+            if changed or not idx.is_indexed(entry.entry_id):
                 return idx.add_entry(entry)
             return 0
         finally:
@@ -802,7 +823,10 @@ def pull_heard(
         raise RuntimeError("heard search sync needs OpenPod Pro")
     if resp.status >= 400:
         raise RuntimeError(f"pull heard failed (HTTP {resp.status})")
-    raw = resp.json().get("heardCues", resp.json().get("heard", []))
+    body = resp.json()
+    # The server's GET /v1/heard returns {"cues": [...]} (Phase 7); accept the
+    # export-file keys too for the offline path.
+    raw = body.get("cues") or body.get("heardCues") or body.get("heard", [])
     records = [ListenRecord.from_player(r) for r in raw]
     return _apply_heard(ws, records)
 

@@ -438,6 +438,28 @@ def test_pull_heard_writes_listened_json(logged_in):
     assert listened["heard"][0]["heard_count"] == 2
 
 
+def test_pull_heard_merges_new_text_into_transcript_for_offline_search(logged_in):
+    # Heard content that ISN'T in the local transcript (e.g. server ASR) must
+    # become findable offline — pull --heard merges it into transcript.json
+    # (task 6.6) without overwriting existing cues.
+    entry = _make_entry(logged_in)  # transcript has cues at 0/5/60
+    key, _ = source_episode_key(entry.source())
+    transport = FakeTransport({
+        "GET /v1/heard": _json_response({"cues": [
+            {"episodeKey": key, "cueStart": 900.0, "cueEnd": 906.0,
+             "text": "a distinctive phrase never in the local transcript",
+             "firstHeardAt": 1000, "heardCount": 1},
+        ]}),
+    })
+    sync.pull_heard(logged_in, transport=transport)
+    merged = entry.read_transcript()
+    texts = [c.text for c in merged.cues]
+    assert "a distinctive phrase never in the local transcript" in texts  # merged in
+    assert "Welcome to the show about consensus." in texts  # original preserved
+    starts = [c.start for c in merged.cues]
+    assert starts == sorted(starts)  # kept in time order
+
+
 def test_import_heard_round_trips_export_file(workspace, tmp_path):
     entry = _make_entry(workspace)
     key, _ = source_episode_key(entry.source())
