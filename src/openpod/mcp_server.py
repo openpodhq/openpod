@@ -37,18 +37,34 @@ def build_server():
 
     @mcp.tool()
     def catch(link: str, kind: Optional[str] = None,
-              transcript_path: Optional[str] = None, ideas: int = 8) -> dict:
-        """Ingest a podcast/RSS/YouTube link (or local file) into the local
-        library: transcribe, extract key ideas + a navigable TOC, and write
-        transcript.json / ideas.md / briefing.md. Returns the entry id, key
-        ideas with deep-links, and the TOC so you can author the briefing."""
+              transcript_path: Optional[str] = None, ideas: int = 8,
+              confirmed: bool = False) -> dict:
+        """Ingest a podcast/RSS/YouTube/Spotify/Apple link (or local file)
+        into the local library: transcribe, extract key ideas + a navigable
+        TOC, and write transcript.json / ideas.md / briefing.md. Returns the
+        entry id, key ideas with deep-links, and the TOC so you can author
+        the briefing.
+
+        If the result has `error: "needs_confirmation"`, OpenPod matched the
+        episode fuzzily — show the candidate to the user, and only after they
+        confirm call catch again with confirmed=true. Never present content
+        from an unconfirmed match. `error: "unresolved_link"` means the
+        deterministic paths ran out: you may resolve it yourself (the `tried`
+        list shows what not to repeat), and prefer passing the resolved RSS
+        feed URL back into catch so the result is recorded."""
         from .catch import catch as _catch
         from .cli import _catch_dict
+        from .errors import OpenPodError
         from .persona import Persona
 
         ws = _workspace()
-        r = _catch(link, workspace=ws, kind=kind,
-                   transcript_path=transcript_path, k_ideas=ideas)
+        try:
+            r = _catch(link, workspace=ws, kind=kind,
+                       transcript_path=transcript_path, k_ideas=ideas,
+                       confirmed=confirmed)
+        except OpenPodError as e:
+            # Deny-and-continue: structured explanation, not a bare failure.
+            return e.to_dict()
         result = _catch_dict(r)
         if not Persona(ws).exists():
             result["next_step"] = (
@@ -82,22 +98,82 @@ def build_server():
         return _export(entry_id, workspace=_workspace(), fmt=fmt, segments=segments)
 
     @mcp.tool()
-    def clip(entry_id: str, start: float, end: float, snap: bool = True) -> dict:
+    def clip(entry_id: str, start: float, end: float, snap: bool = True,
+             video: Optional[bool] = None) -> dict:
         """Cut a local, user-owned clip from a caught episode (snapping to
         sentence boundaries) and generate a shareable deep-link card. Requires
-        ffmpeg. Does not publish or re-host anything."""
+        ffmpeg. Does not publish or re-host anything.
+
+        Video is preserved by default when the source has it (video=None);
+        video=false forces audio-only. Check `has_video` and surface
+        `capability_note` to the user BEFORE delivering — never hand over an
+        audio-only clip as if it were the video they asked for. Source media
+        is cached under .openpod/media/ and reused across clips."""
         from .clip import clip as _clip
 
-        r = _clip(entry_id, start, end, workspace=_workspace(), snap=snap)
+        r = _clip(entry_id, start, end, workspace=_workspace(), snap=snap,
+                  video=video)
         return {
             "path": str(r.path),
             "start": r.start,
             "end": r.end,
             "quote": r.quote,
             "deeplink": r.deeplink,
+            "has_video": r.has_video,
+            "capability_note": r.capability_note,
             "card_path": str(r.card_path) if r.card_path else None,
             "card_png_path": str(r.card_png_path) if r.card_png_path else None,
         }
+
+    @mcp.tool()
+    def playback_link(entry_id: str, seconds: float,
+                      app: Optional[str] = None) -> dict:
+        """Build the best "jump to this moment" link for a caught episode,
+        honoring the user's preferred playback app (settings) and the
+        platform they originally pasted. The result says honestly what the
+        link can do: `timestamp_supported: false` means it opens the episode,
+        not the moment — tell the user, don't imply precision. Apps:
+        youtube, spotify, apple, overcast, podcast (open enclosure)."""
+        from .crosswalk import Crosswalk
+        from .deeplink import build_link
+        from .library import Library
+        from .models import SourceRef
+
+        ws = _workspace()
+        entry = Library(ws).get(entry_id)
+        if entry is None:
+            raise ValueError(f"no caught episode with id {entry_id!r}")
+        meta = entry.read_meta()
+        source = entry.source()
+        origin = SourceRef.from_dict(meta["origin"]) if meta.get("origin") else None
+        identity = None
+        if meta.get("episode_key"):
+            identity = Crosswalk(ws).get(meta["episode_key"])
+        preferred = ws.load_settings().get("preferred_playback_app")
+        r = build_link(source, seconds, identity=identity, app=app,
+                       origin=origin, preferred_app=preferred)
+        return r.to_dict()
+
+    @mcp.tool()
+    def set_preferred_app(app: Optional[str] = None) -> dict:
+        """Get or set the user's preferred playback app (youtube, spotify,
+        apple, overcast, podcast). Call with no argument to read the current
+        setting. Only set it at the user's explicit request."""
+        from .deeplink import APP_CAPABILITIES
+
+        ws = _workspace()
+        settings = ws.load_settings()
+        if app:
+            if app not in APP_CAPABILITIES:
+                raise ValueError(
+                    f"unknown app {app!r}; choose from {sorted(APP_CAPABILITIES)}")
+            settings["preferred_playback_app"] = app
+            ws.save_settings(settings)
+        current = settings.get("preferred_playback_app")
+        caps = APP_CAPABILITIES.get(current or "", {})
+        return {"preferred_playback_app": current,
+                "timestamp_support": caps.get("timestamp"),
+                "path": str(ws.settings_file)}
 
     @mcp.tool()
     def get_briefing(entry_id: str) -> dict:

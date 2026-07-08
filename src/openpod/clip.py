@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .asr import download_audio, has_ffmpeg
+from .asr import has_ffmpeg
 from .card import render_card_html, render_card_png
 from .config import Workspace
 from .deeplink import build_deeplink
@@ -34,6 +34,8 @@ class ClipResult:
     deeplink: Optional[str]
     card_path: Optional[Path] = None       # card.html — always written when make_card
     card_png_path: Optional[Path] = None   # card.png — best-effort, needs openpod[card-png]
+    has_video: bool = False                # the produced clip carries video
+    capability_note: Optional[str] = None  # honest degrade, stated up front
 
 
 def snap_to_cues(transcript: Transcript, start: float, end: float,
@@ -61,7 +63,11 @@ def snap_to_cues(transcript: Transcript, start: float, end: float,
 def clip(entry_id_or_link: str, start: float, end: float, *,
          workspace: Optional[Workspace] = None, snap: bool = True,
          audio_path: Optional[str] = None, reencode: bool = False,
-         make_card: bool = True) -> ClipResult:
+         make_card: bool = True, video: Optional[bool] = None) -> ClipResult:
+    """Cut a clip. ``video=None`` (default) preserves video whenever the
+    source has it; ``video=False`` forces audio-only; ``video=True`` demands
+    video and reports honestly (``capability_note``) when the source is
+    audio-only — *before* a mismatched deliverable, not after."""
     if end <= start:
         raise ValueError("end must be greater than start")
     if not has_ffmpeg():
@@ -87,13 +93,18 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
     if transcript is not None:
         quote = " ".join(c.text for c in transcript.window(start, end)).strip()
 
-    # Get the media.
-    media = audio_path
-    if media is None:
-        url = (source.audio_url if source else None) or (source.url if source else None)
-        if not url:
-            raise ValueError("no audio source for this episode; pass audio_path=")
-        media = download_audio(url)
+    # Get the media — via the shared cache, video-preserving by default.
+    from .media import get_media, source_has_video
+
+    want_video = source_has_video(source) if video is None else video
+    m = get_media(entry.entry_id, source, workspace=ws,
+                  want_video=want_video, audio_path=audio_path)
+    media = str(m.path)
+
+    capability_note = None
+    if want_video and not m.has_video:
+        capability_note = (
+            "this source provides no video track — the clip is audio-only")
 
     entry.clips_dir.mkdir(parents=True, exist_ok=True)
     stem = f"{int(start)}-{int(end)}-{slugify(quote[:40], fallback='clip')}"
@@ -123,7 +134,10 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
 
     return ClipResult(path=out, start=start, end=end, quote=quote,
                      deeplink=deeplink, card_path=card_path,
-                     card_png_path=card_png_path)
+                     card_png_path=card_png_path,
+                     has_video=m.has_video and out.suffix.lower() in
+                     (".mp4", ".mkv", ".webm", ".mov"),
+                     capability_note=capability_note)
 
 
 def _ffmpeg_cut(media: str, start: float, end: float, out: Path,

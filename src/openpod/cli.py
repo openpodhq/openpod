@@ -32,6 +32,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("\naborted", file=sys.stderr)
         return 130
     except Exception as e:  # surface a clean message, not a traceback
+        from .errors import OpenPodError
+
+        if isinstance(e, OpenPodError):
+            # Structured errors are data: print the dict so agents and
+            # scripts can branch on it (needs_confirmation etc.).
+            print(json.dumps(e.to_dict(), indent=2, ensure_ascii=False))
+            return 2
         print(f"error: {e}", file=sys.stderr)
         return 1
 
@@ -54,6 +61,7 @@ def _cmd_catch(args) -> int:
         args.link, workspace=ws, kind=args.kind,
         transcript_path=args.transcript, k_ideas=args.ideas,
         prefer_captions=not args.force_asr,
+        confirmed=getattr(args, "confirmed", False),
     )
     next_step = None if Persona(ws).exists() else (
         "this briefing is generic — ask your agent to \"Set Up My Persona\" "
@@ -80,7 +88,7 @@ def _cmd_catch(args) -> int:
 
 def _catch_dict(result) -> dict:
     """The one catch schema, shared verbatim with the MCP tool."""
-    return {
+    d = {
         "entry_id": result.entry_id,
         "title": result.source.title,
         "show": result.source.show,
@@ -93,6 +101,16 @@ def _catch_dict(result) -> dict:
         "segments": [s.to_dict() for s in result.segments],
         "chapters": [c.to_dict() for c in result.chapters],
     }
+    # Origin/source decoupling: what the user pasted is product state.
+    if result.origin is not None:
+        d["origin_kind"] = result.origin.kind
+        if result.origin.url:
+            d["origin_url"] = result.origin.url
+    ident = getattr(result, "identity", None)
+    if ident is not None and getattr(ident, "episode_key", ""):
+        d["episode_key"] = ident.episode_key
+        d["match_confidence"] = ident.match_confidence
+    return d
 
 
 def _cmd_search(args) -> int:
@@ -122,9 +140,14 @@ def _cmd_search(args) -> int:
 def _cmd_clip(args) -> int:
     from .clip import clip
 
+    video = None
+    if getattr(args, "audio_only", False):
+        video = False
+    elif getattr(args, "video", False):
+        video = True
     result = clip(args.entry_id, args.start, args.end, workspace=_ws(args),
                   snap=not args.no_snap, audio_path=args.audio,
-                  reencode=args.reencode)
+                  reencode=args.reencode, video=video)
     if args.json:
         print(json.dumps({
             "path": str(result.path),
@@ -132,6 +155,8 @@ def _cmd_clip(args) -> int:
             "end": result.end,
             "quote": result.quote,
             "deeplink": result.deeplink,
+            "has_video": result.has_video,
+            "capability_note": result.capability_note,
             "card_path": str(result.card_path) if result.card_path else None,
             "card_png_path": str(result.card_png_path) if result.card_png_path else None,
         }, indent=2, ensure_ascii=False))
@@ -434,10 +459,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     c = sub.add_parser("catch", help="ingest a link into the library")
     c.add_argument("link", help="podcast/RSS/YouTube link, or a local file")
-    c.add_argument("--kind", choices=["youtube", "podcast", "spotify", "file"])
+    c.add_argument("--kind", choices=["youtube", "podcast", "spotify", "apple", "file"])
     c.add_argument("--transcript", help="use a local caption file instead of fetching")
     c.add_argument("--ideas", type=int, default=8, help="number of key ideas to extract")
     c.add_argument("--force-asr", action="store_true", help="skip captions, transcribe audio")
+    c.add_argument("--confirmed", action="store_true",
+                   help="the user confirmed a fuzzy episode match; proceed with it")
     c.add_argument("--json", action="store_true")
     c.set_defaults(func=_cmd_catch)
 
@@ -455,6 +482,10 @@ def _build_parser() -> argparse.ArgumentParser:
     cl.add_argument("--no-snap", action="store_true", help="don't snap to cue edges")
     cl.add_argument("--audio", help="local media file to cut instead of downloading")
     cl.add_argument("--reencode", action="store_true")
+    cl.add_argument("--video", action="store_true",
+                    help="require video (reported honestly if unavailable)")
+    cl.add_argument("--audio-only", action="store_true",
+                    help="force audio-only even when the source has video")
     cl.add_argument("--json", action="store_true")
     cl.set_defaults(func=_cmd_clip)
 

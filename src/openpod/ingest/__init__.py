@@ -3,6 +3,6 @@ and a :class:`~openpod.models.Transcript`."""
 
 from __future__ import annotations
 
-from .resolve import resolve, detect_kind
+from .resolve import resolve, resolve_full, detect_kind
 
-__all__ = ["resolve", "detect_kind"]
+__all__ = ["resolve", "resolve_full", "detect_kind"]

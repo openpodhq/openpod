@@ -78,7 +78,7 @@ class Follows:
 
     def add(self, url: str, *, title: Optional[str] = None,
             source: Optional[str] = None) -> Follow:
-        url = _normalize(url)
+        url = _resolve_show_url(_normalize(url), self.workspace)
         follows = self._load()
         if any(f.url == url for f in follows):
             return next(f for f in follows if f.url == url)
@@ -139,6 +139,31 @@ def _normalize(url: str) -> str:
         parts = [p for p in u.path.split("/") if p]
         if len(parts) == 2 and parts[0] == "channel":
             return YT_CHANNEL_RSS.format(cid=parts[1])
+    return url
+
+
+def _resolve_show_url(url: str, workspace) -> str:
+    """Resolve an Apple Podcasts *show* URL to its RSS feed — once, at
+    follow-time, recorded in the crosswalk show table for every future
+    episode of the show (#9: show-level facts are show-level).
+
+    Best-effort: on lookup failure the original URL is kept and polling
+    surfaces the error, rather than blocking the follow."""
+    if detect_kind(url) != "apple":
+        return url
+    try:
+        from .crosswalk import Crosswalk
+        from .ingest.apple import identify_apple
+
+        ident = identify_apple(url)
+        if ident.feed_url:
+            Crosswalk(workspace).put_show(
+                ident.feed_url, show=ident.show,
+                apple_show_id=ident.apple_show_id,
+                apple_country=ident.apple_country)
+            return ident.feed_url
+    except Exception:
+        pass
     return url
 
 

@@ -170,12 +170,17 @@ def ingest_podcast(link: str, *, item: FeedItem | None = None,
         except ValueError:
             pass  # untimed/HTML transcript — fall through to ASR
 
-    # No timed transcript: download the enclosure and run local ASR.
+    # No timed transcript: validate, download the enclosure, run local ASR.
+    # Feeds list whatever they like — the enclosure gets a content-type check
+    # before anything is piped into transcription (explicit rejection beats
+    # incidental library tolerance).
     if not item.enclosure_url:
         raise ValueError("no transcript and no audio enclosure for this episode")
     from ..asr import transcribe, download_audio
+    from .validate import ensure_media
 
-    audio = download_audio(item.enclosure_url)
+    info = ensure_media(item.enclosure_url)
+    audio = download_audio(info.url)
     return source, transcribe(audio)
 
 

@@ -66,11 +66,25 @@ def download_audio(url: str, *, dest_dir: Optional[str] = None) -> str:
     dest_dir = dest_dir or tempfile.mkdtemp(prefix="openpod-audio-")
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
 
-    # Direct enclosure: just fetch it.
+    # Direct enclosure: validate the content type, then fetch the terminal
+    # URL (tracking redirectors resolved once, not on every request).
+    fetch_url, ext = url, None
     if url.lower().split("?")[0].endswith((".mp3", ".m4a", ".aac", ".ogg", ".wav")):
         ext = url.lower().split("?")[0].rsplit(".", 1)[-1]
+    elif url.lower().startswith(("http://", "https://")):
+        # No recognizable extension (e.g. a chrt.fm-style redirector): sniff
+        # what it actually serves instead of guessing.
+        from .ingest.validate import sniff
+
+        info = sniff(url)
+        if info.kind == "audio":
+            fetch_url = info.url
+            ext = (info.content_type or "audio/mpeg").split("/")[-1].split(";")[0]
+            ext = {"mpeg": "mp3", "mp4": "m4a", "x-m4a": "m4a"}.get(ext, ext)
+
+    if ext:
         out = Path(dest_dir) / f"audio.{ext}"
-        req = urllib.request.Request(url, headers=_UA)
+        req = urllib.request.Request(fetch_url, headers=_UA)
         with urllib.request.urlopen(req, timeout=120) as resp, out.open("wb") as fh:  # noqa: S310
             shutil.copyfileobj(resp, fh)
         return str(out)

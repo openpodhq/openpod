@@ -20,7 +20,9 @@ from .theme import moment_plain
 # --------------------------------------------------------------------------- #
 
 # Recognised source kinds. "file" is a local media/transcript path (offline).
-SOURCE_KINDS = ("youtube", "podcast", "spotify", "file")
+# "apple" is an Apple Podcasts page URL. "unknown" is an http(s) link we could
+# not classify — it never silently ingests (see ingest.resolve).
+SOURCE_KINDS = ("youtube", "podcast", "spotify", "apple", "file", "unknown")
 
 
 @dataclass
@@ -59,6 +61,60 @@ class SourceRef:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "SourceRef":
+        known = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
+        return cls(**{k: v for k, v in d.items() if k in known})
+
+
+@dataclass
+class EpisodeIdentity:
+    """One episode's identity across every platform — the crosswalk record.
+
+    Identity is a fact about the episode, not about the user or the session,
+    so it is resolved once and cached (see :mod:`openpod.crosswalk`). Every
+    platform id carries provenance: ``methods[field]`` records how it was
+    learned (``"url"``, ``"apple-lookup"``, ``"feed-guid"``, ``"title-match"``,
+    ``"agent"``, ``"user-confirmed"`` …) and ``match_confidence`` scores the
+    weakest inference in the record (1.0 = every id is deterministic).
+    """
+
+    episode_key: str = ""                     # openpod.identity ladder
+    key_confidence: str = ""                  # "guid" | "enclosure" | "derived"
+    # Canonical (RSS) identity.
+    feed_url: Optional[str] = None
+    rss_guid: Optional[str] = None
+    enclosure_url: Optional[str] = None
+    # Platform ids.
+    youtube_video_id: Optional[str] = None
+    spotify_episode_id: Optional[str] = None
+    spotify_show_id: Optional[str] = None
+    apple_episode_id: Optional[str] = None    # the `i=` track id
+    apple_show_id: Optional[str] = None
+    apple_country: Optional[str] = None       # Apple's catalog is regional
+    # Human metadata (for matching + display).
+    show: Optional[str] = None
+    title: Optional[str] = None
+    published: Optional[str] = None
+    duration: Optional[float] = None
+    # Provenance.
+    methods: dict = field(default_factory=dict)   # field -> how it was learned
+    match_confidence: float = 1.0                 # min over fuzzy inferences
+    # Cross-source timestamp alignment maps, keyed by transcript-source kind
+    # (see openpod.align): {"youtube": [[t, offset], ...]}.
+    offset_maps: dict = field(default_factory=dict)
+
+    def note(self, field_name: str, method: str,
+             confidence: float = 1.0) -> None:
+        """Record provenance for a field and fold its confidence in."""
+        self.methods[field_name] = method
+        self.match_confidence = min(self.match_confidence, confidence)
+
+    def to_dict(self) -> dict[str, Any]:
+        d = {k: v for k, v in asdict(self).items()
+             if v not in (None, {}, [])}
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "EpisodeIdentity":
         known = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
         return cls(**{k: v for k, v in d.items() if k in known})
 

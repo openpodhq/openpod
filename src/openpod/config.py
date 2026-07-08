@@ -71,6 +71,46 @@ class Workspace:
     def follows_file(self) -> Path:
         return self.dot / "follows.yaml"
 
+    @property
+    def crosswalk_dir(self) -> Path:
+        """Cached episode-identity records (see :mod:`openpod.crosswalk`)."""
+        return self.dot / "crosswalk"
+
+    @property
+    def media_dir(self) -> Path:
+        """Shared downloaded-media cache — one download per episode, reused
+        by ASR, clip, and any external tool."""
+        return self.dot / "media"
+
+    @property
+    def settings_file(self) -> Path:
+        return self.dot / "settings.yaml"
+
+    # -- user settings ------------------------------------------------------- #
+
+    def load_settings(self) -> dict:
+        """Read settings.yaml (e.g. ``preferred_playback_app``). Missing file
+        or malformed YAML reads as empty — settings are always optional."""
+        path = self.settings_file
+        if not path.exists():
+            return {}
+        import yaml
+
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def save_settings(self, settings: dict) -> None:
+        import yaml
+
+        self.dot.mkdir(parents=True, exist_ok=True)
+        self.settings_file.write_text(
+            yaml.safe_dump(settings, sort_keys=True, allow_unicode=True),
+            encoding="utf-8",
+        )
+
     # -- lifecycle ---------------------------------------------------------- #
 
     def exists(self) -> bool:
