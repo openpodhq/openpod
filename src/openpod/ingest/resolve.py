@@ -129,7 +129,11 @@ def resolve_full(link: str, *, kind: str | None = None,
                  transcript_path: str | None = None,
                  prefer_captions: bool = True,
                  confirmed: bool = False,
-                 crosswalk=None) -> Resolution:
+                 crosswalk=None,
+                 asr: str = "auto",
+                 asr_auto_threshold: float = 180.0,
+                 caption_languages: list | None = None,
+                 progress=None) -> Resolution:
     """Resolve a link end-to-end, returning identity + match provenance.
 
     ``crosswalk`` (a :class:`openpod.crosswalk.Crosswalk`) enables the cache
@@ -148,12 +152,15 @@ def resolve_full(link: str, *, kind: str | None = None,
 
     if kind == "youtube":
         from .youtube import ingest_youtube
-        source, t = ingest_youtube(link, prefer_captions=prefer_captions)
+        source, t = ingest_youtube(link, prefer_captions=prefer_captions,
+                                   languages=caption_languages, asr=asr,
+                                   auto_threshold=asr_auto_threshold,
+                                   progress=progress)
         return Resolution(source=source, transcript=t, origin=origin)
 
     if kind == "podcast":
         from .rss import ingest_podcast
-        source, t = ingest_podcast(link)
+        source, t = ingest_podcast(link, progress=progress)
         return Resolution(source=source, transcript=t, origin=origin)
 
     if kind == "file":

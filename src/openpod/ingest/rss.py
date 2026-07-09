@@ -139,7 +139,8 @@ def load_feed(url: str) -> Feed:
 
 
 def ingest_podcast(link: str, *, item: FeedItem | None = None,
-                   feed_title: str | None = None) -> tuple[SourceRef, Transcript]:
+                   feed_title: str | None = None,
+                   progress=None) -> tuple[SourceRef, Transcript]:
     """Resolve a podcast link (feed URL, or direct enclosure) to (source, transcript)."""
     from .. import transcript as tx
 
@@ -176,12 +177,18 @@ def ingest_podcast(link: str, *, item: FeedItem | None = None,
     # incidental library tolerance).
     if not item.enclosure_url:
         raise ValueError("no transcript and no audio enclosure for this episode")
-    from ..asr import transcribe, download_audio
+    from ..asr import estimate_transcription, transcribe, download_audio
     from .validate import ensure_media
 
+    if progress:
+        est = estimate_transcription(source.duration)
+        progress("no publisher transcript for this episode — downloading the "
+                 f"audio and transcribing locally ({est.get('human', 'several minutes')})")
     info = ensure_media(item.enclosure_url)
     audio = download_audio(info.url)
-    return source, transcribe(audio)
+    t = transcribe(audio)
+    t.notes = "no publisher transcript; transcribed locally"
+    return source, t
 
 
 def _fmt_for_type(mime: Optional[str], url: str) -> Optional[str]:

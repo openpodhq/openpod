@@ -111,5 +111,54 @@ def download_audio(url: str, *, dest_dir: Optional[str] = None) -> str:
         return ydl.prepare_filename(info)
 
 
+def estimate_transcription(duration: Optional[float],
+                           model: str = "base") -> dict:
+    """Rough wall-clock estimate for local Whisper on typical hardware.
+
+    Deliberately a *range* — CPU/GPU spread is wide. The point is honesty
+    at the moment of decision ("~9–25 min for this episode"), not precision.
+    """
+    # Realtime factors per model size (fraction of audio duration), low/high.
+    factors = {"tiny": (0.03, 0.10), "base": (0.05, 0.20),
+               "small": (0.10, 0.35), "medium": (0.25, 0.80),
+               "large": (0.5, 1.5)}
+    lo_f, hi_f = factors.get(model.split("-")[0], (0.05, 0.20))
+    if not duration:
+        return {"model": model, "human": "several minutes (unknown duration)"}
+    lo, hi = duration * lo_f, duration * hi_f
+
+    def _m(s: float) -> str:
+        return f"{max(1, round(s / 60))} min" if s >= 45 else f"{round(s)}s"
+
+    return {"model": model, "low_seconds": round(lo), "high_seconds": round(hi),
+            "human": f"{_m(lo)}–{_m(hi)}"}
+
+
 def has_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None
+
+
+_ffmpeg_caps: Optional[dict] = None
+
+
+def ffmpeg_capabilities(*, refresh: bool = False) -> dict:
+    """What this ffmpeg build can actually do, probed once.
+
+    Homebrew builds routinely ship without libass/drawtext; anything that
+    promises burned-in text must check here first and degrade honestly
+    (sidecar captions) instead of failing mid-encode.
+    """
+    global _ffmpeg_caps
+    if _ffmpeg_caps is not None and not refresh:
+        return _ffmpeg_caps
+    caps = {"ffmpeg": has_ffmpeg(), "subtitles": False, "drawtext": False}
+    if caps["ffmpeg"]:
+        try:
+            out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"],
+                                 capture_output=True, text=True, timeout=15).stdout
+            caps["subtitles"] = " subtitles " in out
+            caps["drawtext"] = " drawtext " in out
+        except Exception:
+            pass
+    _ffmpeg_caps = caps
+    return caps

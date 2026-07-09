@@ -49,6 +49,9 @@ class SourceRef:
     # Creator-provided chapter markers, when the platform exposes them
     # (YouTube chapters / description timestamps). Each: {start, end?, title}.
     chapters: Optional[list] = None
+    # Structured speakers, so labels come from data instead of agent memory
+    # (the Roth/Ross bug class). Each: {name, role?, primary?}.
+    speakers: Optional[list] = None
 
     def __post_init__(self) -> None:
         if self.kind not in SOURCE_KINDS:
@@ -162,6 +165,9 @@ class Transcript:
     source: str = "unknown"        # e.g. "youtube-captions", "podcast:transcript", "asr:whisper"
     language: Optional[str] = None
     word_level: bool = False        # True if timing is word-accurate (clip-safe)
+    # Provenance the user should hear about: why ASR ran instead of captions,
+    # whether a later re-catch could upgrade this transcript, etc.
+    notes: Optional[str] = None
 
     # -- basic access ------------------------------------------------------- #
 
@@ -204,12 +210,15 @@ class Transcript:
     # -- serialization ------------------------------------------------------ #
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "source": self.source,
             "language": self.language,
             "word_level": self.word_level,
             "cues": [c.to_dict() for c in self.cues],
         }
+        if self.notes:
+            d["notes"] = self.notes
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Transcript":
@@ -218,6 +227,7 @@ class Transcript:
             source=d.get("source", "unknown"),
             language=d.get("language"),
             word_level=bool(d.get("word_level", False)),
+            notes=d.get("notes"),
         )
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Optional
 
 from . import __version__
@@ -57,11 +58,18 @@ def _cmd_catch(args) -> int:
     from .persona import Persona
 
     ws = _ws(args)
+    asr = "auto"
+    if getattr(args, "asr_now", False) or args.force_asr:
+        asr = "now"
+    elif getattr(args, "no_asr", False):
+        asr = "never"
     result = catch(
         args.link, workspace=ws, kind=args.kind,
         transcript_path=args.transcript, k_ideas=args.ideas,
         prefer_captions=not args.force_asr,
         confirmed=getattr(args, "confirmed", False),
+        asr=asr,
+        progress=lambda msg: print(f"… {msg}", file=sys.stderr),
     )
     next_step = None if Persona(ws).exists() else (
         "this briefing is generic — ask your agent to \"Set Up My Persona\" "
@@ -101,6 +109,8 @@ def _catch_dict(result) -> dict:
         "segments": [s.to_dict() for s in result.segments],
         "chapters": [c.to_dict() for c in result.chapters],
     }
+    if result.transcript.notes:
+        d["transcript_notes"] = result.transcript.notes
     # Origin/source decoupling: what the user pasted is product state.
     if result.origin is not None:
         d["origin_kind"] = result.origin.kind
@@ -147,7 +157,12 @@ def _cmd_clip(args) -> int:
         video = True
     result = clip(args.entry_id, args.start, args.end, workspace=_ws(args),
                   snap=not args.no_snap, audio_path=args.audio,
-                  reencode=args.reencode, video=video)
+                  reencode=args.reencode, video=video,
+                  captions=args.captions, lang=args.lang,
+                  captions_file=args.captions_file,
+                  word_level=args.word_level,
+                  label=True if (args.label_from_meta or args.label) else None,
+                  label_text=args.label, hook=args.hook, out_dir=args.out)
     if args.json:
         print(json.dumps({
             "path": str(result.path),
@@ -157,12 +172,28 @@ def _cmd_clip(args) -> int:
             "deeplink": result.deeplink,
             "has_video": result.has_video,
             "capability_note": result.capability_note,
+            "captions_path": str(result.captions_path) if result.captions_path else None,
+            "captions": result.captions,
+            "label": result.label,
+            "export_dir": str(result.export_dir) if result.export_dir else None,
+            "export_paths": [str(p) for p in result.export_paths],
             "card_path": str(result.card_path) if result.card_path else None,
             "card_png_path": str(result.card_png_path) if result.card_png_path else None,
         }, indent=2, ensure_ascii=False))
         return 0
     print(f"clip: {theme.path(str(result.path))}")
     print(f"  span: {theme.moment(result.start, result.deeplink)} – {format_timestamp(result.end)}")
+    if result.captions_path:
+        cov = (result.captions or {}).get("coverage", {})
+        print(f"  captions: {theme.path(str(result.captions_path))} "
+              f"(coverage {cov.get('ratio', '?')})")
+    if result.label:
+        print(f"  label: {result.label}")
+    if result.export_dir:
+        print(f"  exported: {theme.path(str(result.export_dir))} "
+              f"({len(result.export_paths)} files)")
+    if result.capability_note:
+        print(f"  note: {result.capability_note}")
     if result.card_path:
         print(f"  share card: {theme.path(str(result.card_path))}")
         if result.card_png_path:
@@ -171,6 +202,83 @@ def _cmd_clip(args) -> int:
             print("  card image: to get a PNG, open the card in a browser and "
                   "screenshot it — or `pip install 'openpod[card-png]'`")
     return 0
+
+
+def _cmd_captions(args) -> int:
+    from .captions import export_captions, parse_srt, verify_coverage
+    from .library import Library
+
+    entry = Library(_ws(args)).get(args.entry_id)
+    if entry is None:
+        print(f"error: no caught episode with id {args.entry_id!r}", file=sys.stderr)
+        return 1
+
+    if args.verify:
+        transcript = entry.read_transcript()
+        lines = parse_srt(Path(args.verify).read_text(encoding="utf-8"))
+        report = verify_coverage(transcript, args.start, args.end, lines)
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+        return 0 if report.ok else 2
+
+    r = export_captions(entry, args.start, args.end, lang=args.lang,
+                        fmt=args.format,
+                        out_dir=Path(args.out) if args.out else None)
+    payload = r.to_dict()
+    if args.word_level:
+        from .captions import word_timings_for_clip
+        from .media import get_media
+
+        m = get_media(entry.entry_id, entry.source(), workspace=_ws(args))
+        words = word_timings_for_clip(m.path, args.start, args.end)
+        wpath = r.path.with_suffix(".words.json")
+        wpath.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
+        payload["words_path"] = str(wpath)
+        payload["words"] = len(words)
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0 if r.coverage.ok else 2
+
+
+def _cmd_settings(args) -> int:
+    ws = _ws(args)
+    if args.key and args.value is not None:
+        value: object = args.value
+        if value in ("true", "false"):
+            value = value == "true"
+        ws.set_setting(args.key, value)
+        print(f"{args.key} = {value}")
+        return 0
+    if args.key:
+        print(json.dumps(ws.get_setting(args.key), indent=2, ensure_ascii=False))
+        return 0
+    print(json.dumps(ws.effective_settings(), indent=2, ensure_ascii=False))
+    return 0
+
+
+def _cmd_doctor(args) -> int:
+    from .doctor import check
+
+    report = check(_ws(args), fix=args.fix)
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        ff = report["ffmpeg"]
+        print(theme.banner())
+        print()
+        print(f"ffmpeg: {'ok' if ff['ffmpeg'] else 'MISSING'}"
+              f"  subtitles(libass): {'yes' if ff['subtitles'] else 'no'}"
+              f"  drawtext: {'yes' if ff['drawtext'] else 'no'}")
+        st = report["settings"]
+        print(f"settings: {st['path']}" + ("" if st["exists"] else " (not created — defaults apply)"))
+        lib = report["library"]
+        print(f"library: {len(lib['foreign'])} foreign item(s)"
+              + (" — quarantined to _scratch/" if lib["quarantined"] and lib["foreign"] else ""))
+        for f in lib["foreign"][:20]:
+            print(f"  - {f['path']}" + (f" → {f['moved_to']}" if f.get("moved_to") else ""))
+        for section in (ff, st, lib):
+            for n in section["notes"]:
+                print(f"  note: {n}")
+    foreign_pending = report["library"]["foreign"] and not args.fix
+    return 1 if foreign_pending else 0
 
 
 def _cmd_export(args) -> int:
@@ -463,6 +571,11 @@ def _build_parser() -> argparse.ArgumentParser:
     c.add_argument("--transcript", help="use a local caption file instead of fetching")
     c.add_argument("--ideas", type=int, default=8, help="number of key ideas to extract")
     c.add_argument("--force-asr", action="store_true", help="skip captions, transcribe audio")
+    c.add_argument("--asr-now", action="store_true",
+                   help="captions rate-limited? transcribe locally now instead "
+                        "of waiting (the estimate is shown before it starts)")
+    c.add_argument("--no-asr", action="store_true",
+                   help="never transcribe locally — fail with options instead")
     c.add_argument("--confirmed", action="store_true",
                    help="the user confirmed a fuzzy episode match; proceed with it")
     c.add_argument("--json", action="store_true")
@@ -486,8 +599,58 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="require video (reported honestly if unavailable)")
     cl.add_argument("--audio-only", action="store_true",
                     help="force audio-only even when the source has video")
+    cl.add_argument("--captions", choices=["off", "soft", "burn"],
+                    help="caption derivative: soft = .srt sidecar, burn = "
+                         "hard-subbed copy in the export dir (default: settings)")
+    cl.add_argument("--lang", help="caption target language (BCP-47); "
+                                   "default: settings/locale")
+    cl.add_argument("--captions-file",
+                    help="verified (translated) .srt to burn — must pass the "
+                         "coverage check or the burn is refused")
+    cl.add_argument("--word-level", action="store_true",
+                    help="add word timings from the cut clip (asr extra) — "
+                         "the karaoke-highlight track")
+    cl.add_argument("--label", help="name-plate text for the export derivative")
+    cl.add_argument("--label-from-meta", action="store_true",
+                    help="label from the episode's structured speakers "
+                         "(or workspace speakers.yaml)")
+    cl.add_argument("--hook", help="one-line hook stored in the export "
+                                   "package (label.json); rendered by "
+                                   "downstream tools, not burned here")
+    cl.add_argument("--out", help="working folder: copy master + sidecars there "
+                                  "(burn derivatives land only there); "
+                                  "default: clip.export_dir setting")
     cl.add_argument("--json", action="store_true")
     cl.set_defaults(func=_cmd_clip)
+
+    cap = sub.add_parser("captions",
+                         help="export caption sidecar (srt/vtt) for a clip "
+                              "window, with a transcript coverage report")
+    cap.add_argument("entry_id")
+    cap.add_argument("start", type=float)
+    cap.add_argument("end", type=float)
+    cap.add_argument("--lang", help="target language (translation flagged, "
+                                    "never guessed)")
+    cap.add_argument("--format", choices=["srt", "vtt"], default="srt")
+    cap.add_argument("--out", help="write the sidecar here instead of clips/")
+    cap.add_argument("--word-level", action="store_true",
+                     help="also emit word timings for the window "
+                          "(karaoke highlight; needs the asr extra)")
+    cap.add_argument("--verify", metavar="SRT_FILE",
+                     help="verify an (edited/translated) caption file's "
+                          "coverage against the transcript window instead of exporting")
+    cap.set_defaults(func=_cmd_captions)
+
+    se = sub.add_parser("settings", help="get or set settings.yaml keys")
+    se.add_argument("key", nargs="?", help="dotted key, e.g. clip.export_dir")
+    se.add_argument("value", nargs="?", help="new value (omit to read)")
+    se.set_defaults(func=_cmd_settings)
+
+    dr = sub.add_parser("doctor", help="capability report + library hygiene check")
+    dr.add_argument("--fix", action="store_true",
+                    help="quarantine foreign files under library/_scratch/")
+    dr.add_argument("--json", action="store_true")
+    dr.set_defaults(func=_cmd_doctor)
 
     e = sub.add_parser("export-timestamps", help="emit timed segments + deep-links")
     e.add_argument("entry_id")

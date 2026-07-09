@@ -8,6 +8,71 @@ All notable changes to OpenPod are documented here. Format loosely follows
 First Stage 1 alpha: local-pure, pull-only.
 
 ### Added
+- **No more silent Whisper fallback** — a cost-based gate keeps interaction
+  fast: every ASR run is *announced* (why captions failed, the wall-clock
+  estimate, and that it's local compute — no tokens or API cost — recorded
+  in `transcript.notes`), but the user is only *asked* when it's worth
+  asking. Caption failures are classified: permanent (no captions exist →
+  ASR just runs, announced) vs transient (429/IP throttling → a short
+  transcription under `asr.auto_threshold_seconds` (default 180s) runs with
+  a notice, a long one raises structured `captions_unavailable` with both
+  options priced — wait and re-catch for free captions, or `asr="now"` /
+  `--asr-now`). `--no-asr` never transcribes. Throttled-then-ASR
+  transcripts carry "a later re-catch may upgrade this to platform
+  captions". RSS enclosure ASR announces itself the same way. Caption
+  language follows `locale.preferred_language` (a Hebrew interview fetches
+  Hebrew captions first, then fallback, then English).
+- **Caption data contract + export package** (naval-clipper design port —
+  contracts, not renderers):
+  - Clips carry a **structured caption track in their `.json`**: phrases
+    chunked by the karaoke rules (≤5 words / sentence / `‖` force-break —
+    the marker translated Hebrew keeps so nothing regroups it), language +
+    `rtl`, and honest `timing` (`approximate` for rolling YouTube cues,
+    `exact` only with word-level).
+  - **Word-level track** (`--word-level` on `clip` and `captions`, asr
+    extra): whisper on just the clip window/file → `*.words.json` — the
+    karaoke-highlight layer.
+  - **Burn gate**: burning refuses unverified translations and any
+    `captions_file` that fails the coverage check (dropped speech named in
+    the note); RTL burns warn to eyeball `verify.png` for missing glyphs.
+  - **Export package**: the working folder now also gets `deeplink.txt`,
+    `label.json` (label + optional `hook`), `*.words.json`, and `verify.png`
+    (start/mid/end frames of the burned derivative, tiled).
+  - **Speakers**: `{title}`/`{role}` template aliases and a workspace
+    `speakers.yaml` (keyed by show) as fallback — teach OpenPod a show's
+    hosts once.
+  - **`clip.style` setting** (default `karaoke`) reserved for renderers.
+  - **New skill: Make it Shareable** — the export pipeline end-to-end
+    (doctor first, captions as data, line-locked translation, verified burn,
+    export-folder hygiene); `cut-the-clip` hands off to it, and
+    `sharpen-my-persona` may offer `locale.preferred_language` when the
+    library skews non-English.
+- **The two-artifact clip contract** (QA session 2026-07-09): the library
+  clip is the clean master and is never mutated; presentation — captions,
+  name-plate labels, social encodes — are **export derivatives**:
+  - **Settings schema v0** (`settings.yaml`, documented defaults merged at
+    read time): `locale.preferred_language`/`fallback_language`,
+    `clip.captions` (`off|soft|burn`), `clip.caption_language`,
+    `clip.burn_in` (default **false**), `clip.label`, `clip.label_template`,
+    `clip.export_dir`, `clip.keep_clean_master`. Unknown keys are rejected
+    with the documented list. CLI `openpod settings`, MCP `settings` tool.
+  - **Caption primitive** (`captions.py`): SRT/VTT sidecars generated from
+    `transcript.window(start, end)` — full coverage by construction — plus a
+    **coverage verify** (`openpod captions --verify`, MCP `captions`) that
+    catches dropped lines in edited/translated caption files before any
+    burn-in. Translation is flagged (`translation_needed`), never guessed.
+  - **Clip presentation flags**: `--captions off|soft|burn`, `--lang`,
+    `--label` / `--label-from-meta`, `--out DIR` (and `clip.export_dir`):
+    derivatives and copies land in the working folder; burned files land
+    *only* there. Labels render from structured `source.speakers`
+    (name/role), never from agent memory.
+  - **`openpod doctor`**: ffmpeg capability report (libass/drawtext probed
+    before any burn is promised), settings status, and library hygiene —
+    foreign files (venvs, scripts, previews) under `library/` are flagged
+    and quarantined to `library/_scratch/` with `--fix`.
+  - **cut-the-clip skill v2**: teaches the two-artifact contract — never
+    burn the master, captions from transcript with verify, labels from
+    meta, working files never in the vault.
 - **Deterministic cross-platform resolution** — episode identity is product
   code now, not per-session agent improvisation:
   - **Apple Podcasts ingest** (`ingest/apple.py`): `id{show}` + `i={episode}`

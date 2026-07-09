@@ -38,7 +38,7 @@ def build_server():
     @mcp.tool()
     def catch(link: str, kind: Optional[str] = None,
               transcript_path: Optional[str] = None, ideas: int = 8,
-              confirmed: bool = False) -> dict:
+              confirmed: bool = False, asr: str = "auto") -> dict:
         """Ingest a podcast/RSS/YouTube/Spotify/Apple link (or local file)
         into the local library: transcribe, extract key ideas + a navigable
         TOC, and write transcript.json / ideas.md / briefing.md. Returns the
@@ -51,7 +51,16 @@ def build_server():
         from an unconfirmed match. `error: "unresolved_link"` means the
         deterministic paths ran out: you may resolve it yourself (the `tried`
         list shows what not to repeat), and prefer passing the resolved RSS
-        feed URL back into catch so the result is recorded."""
+        feed URL back into catch so the result is recorded.
+
+        Short local transcriptions run automatically — when the result
+        carries `transcript_notes`, relay it to the user (it says why ASR
+        ran, that it's local compute with no token/API cost, and whether a
+        later re-catch can upgrade to platform captions). You only get
+        `error: "captions_unavailable"` when the transcription would be
+        LONG and captions are merely throttled (YouTube 429) — then give
+        the user the choice from `options`: wait a few minutes and re-catch
+        (free), or re-call with asr="now" (the `asr_estimate` prices it)."""
         from .catch import catch as _catch
         from .cli import _catch_dict
         from .errors import OpenPodError
@@ -61,7 +70,7 @@ def build_server():
         try:
             r = _catch(link, workspace=ws, kind=kind,
                        transcript_path=transcript_path, k_ideas=ideas,
-                       confirmed=confirmed)
+                       confirmed=confirmed, asr=asr)
         except OpenPodError as e:
             # Deny-and-continue: structured explanation, not a bare failure.
             return e.to_dict()
@@ -99,20 +108,36 @@ def build_server():
 
     @mcp.tool()
     def clip(entry_id: str, start: float, end: float, snap: bool = True,
-             video: Optional[bool] = None) -> dict:
+             video: Optional[bool] = None, captions: Optional[str] = None,
+             lang: Optional[str] = None, captions_file: Optional[str] = None,
+             word_level: bool = False, label: Optional[bool] = None,
+             label_text: Optional[str] = None, hook: Optional[str] = None,
+             out_dir: Optional[str] = None) -> dict:
         """Cut a local, user-owned clip from a caught episode (snapping to
         sentence boundaries) and generate a shareable deep-link card. Requires
         ffmpeg. Does not publish or re-host anything.
 
+        THE TWO-ARTIFACT CONTRACT: the file under the library is the clean
+        master and is NEVER modified. Presentation — captions
+        ('off'|'soft'|'burn'), a speaker name-plate, working-folder copies —
+        are derivatives; burned files land only in out_dir (or the
+        clip.export_dir setting). Never burn text into the library master
+        yourself; use these parameters. Labels come from the episode's
+        structured speakers (label=true) or explicit label_text — never from
+        your own memory of who was speaking. If `captions.translation_needed`
+        is set, translate the sidecar line-by-line (keep timings), then
+        re-verify with the captions tool before any burn.
+
         Video is preserved by default when the source has it (video=None);
         video=false forces audio-only. Check `has_video` and surface
-        `capability_note` to the user BEFORE delivering — never hand over an
-        audio-only clip as if it were the video they asked for. Source media
-        is cached under .openpod/media/ and reused across clips."""
+        `capability_note` to the user BEFORE delivering."""
         from .clip import clip as _clip
 
         r = _clip(entry_id, start, end, workspace=_workspace(), snap=snap,
-                  video=video)
+                  video=video, captions=captions, lang=lang,
+                  captions_file=captions_file, word_level=word_level,
+                  label=label, label_text=label_text, hook=hook,
+                  out_dir=out_dir)
         return {
             "path": str(r.path),
             "start": r.start,
@@ -121,9 +146,72 @@ def build_server():
             "deeplink": r.deeplink,
             "has_video": r.has_video,
             "capability_note": r.capability_note,
+            "captions_path": str(r.captions_path) if r.captions_path else None,
+            "captions": r.captions,
+            "label": r.label,
+            "export_dir": str(r.export_dir) if r.export_dir else None,
+            "export_paths": [str(p) for p in r.export_paths],
             "card_path": str(r.card_path) if r.card_path else None,
             "card_png_path": str(r.card_png_path) if r.card_png_path else None,
         }
+
+    @mcp.tool()
+    def captions(entry_id: str, start: float, end: float,
+                 lang: Optional[str] = None,
+                 verify_path: Optional[str] = None) -> dict:
+        """Export a caption sidecar (.srt) for a clip window, generated from
+        the transcript with a coverage report — or, with verify_path, check
+        an edited/translated caption file against the transcript window.
+
+        RULE: caption lines come from the transcript, never hand-summarized;
+        after translating, keep every line and its timings, and re-run this
+        tool with verify_path — a failed coverage report (ok=false, gaps
+        listed) means spoken content was dropped and must be restored before
+        any burn-in."""
+        from pathlib import Path as _P
+
+        from .captions import export_captions, parse_srt, verify_coverage
+        from .library import Library
+
+        entry = Library(_workspace()).get(entry_id)
+        if entry is None:
+            raise ValueError(f"no caught episode with id {entry_id!r}")
+        if verify_path:
+            transcript = entry.read_transcript()
+            lines = parse_srt(_P(verify_path).read_text(encoding="utf-8"))
+            return verify_coverage(transcript, start, end, lines).to_dict()
+        return export_captions(entry, start, end, lang=lang).to_dict()
+
+    @mcp.tool()
+    def settings(key: Optional[str] = None, value: Optional[str] = None) -> dict:
+        """Read or change settings.yaml. No args = full effective settings
+        (defaults merged). key alone reads one dotted key; key + value sets
+        it — only at the user's explicit request. Documented keys include
+        locale.preferred_language, clip.captions (off|soft|burn),
+        clip.export_dir, clip.label_template, preferred_playback_app."""
+        ws = _workspace()
+        if key and value is not None:
+            v: object = value
+            if value in ("true", "false"):
+                v = value == "true"
+            ws.set_setting(key, v)
+            return {key: v, "path": str(ws.settings_file)}
+        if key:
+            return {key: ws.get_setting(key)}
+        return ws.effective_settings()
+
+    @mcp.tool()
+    def doctor(fix: bool = False) -> dict:
+        """Health report: ffmpeg capabilities (can this machine burn
+        captions/labels at all?), settings file status, and library hygiene —
+        foreign files (venvs, scripts, previews) that don't belong in the
+        corpus. fix=true quarantines them under library/_scratch/ (moved,
+        never deleted). Run this BEFORE promising burned-in text, and never
+        write non-openpod files under .openpod/library/ yourself — use
+        clip.export_dir for working files."""
+        from .doctor import check
+
+        return check(_workspace(), fix=fix)
 
     @mcp.tool()
     def playback_link(entry_id: str, seconds: float,

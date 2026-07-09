@@ -165,7 +165,7 @@ def test_note_unknown_entry_names_the_fix(workspace, capsys):
 CATALOG = {
     "catch-me-up", "set-up-my-persona", "bring-in-my-world",
     "sharpen-my-persona", "find-the-moment", "cut-the-clip", "whats-new",
-    "chapter-it", "follow-this",
+    "chapter-it", "follow-this", "make-it-shareable",
 }
 
 

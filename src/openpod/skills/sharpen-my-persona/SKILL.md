@@ -18,6 +18,10 @@ grown well past what the Derived block reflects.
    most-followed shows, recurring themes. Explicit signal only — what the user
    chose to catch and keep. It never invents interests they didn't act on.
 2. Report the path to `persona.md` and summarize what changed.
+   If the library shows a strong non-English presence (e.g. Hebrew shows in
+   follows or catches) and `locale.preferred_language` is unset, offer to
+   set it once via `settings` — it drives caption language, briefing
+   language, and export defaults. Ask; never set it silently.
 3. **Surface tension, don't resolve it silently.** If the derived signal
    contradicts the user's stated filters (they keep catching a topic marked
    "not interested"), mention it as an observation and let them decide whether

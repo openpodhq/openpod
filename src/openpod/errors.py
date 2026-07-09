@@ -82,6 +82,57 @@ class NeedsConfirmation(OpenPodError):
         }
 
 
+class CaptionsUnavailable(OpenPodError):
+    """Captions failed and falling back to local ASR is a *decision*, not
+    a default.
+
+    Raised for **transient** failures (YouTube 429 / IP throttling) where
+    waiting and re-catching would get free, instant captions — instead of
+    silently burning minutes of local Whisper. Carries the ASR time estimate
+    so the interface can offer both options honestly: "wait and retry" vs
+    "transcribe locally now (~N min)".
+    """
+
+    code = "captions_unavailable"
+
+    def __init__(self, link: str, *, reason: str, detail: Optional[str] = None,
+                 estimate: Optional[dict] = None) -> None:
+        self.link, self.reason, self.detail = link, reason, detail
+        self.estimate = estimate or {}
+        human = self.estimate.get("human", "several minutes")
+        super().__init__(
+            f"captions unavailable ({reason}) for {link}. "
+            f"Wait and re-catch to get captions, or re-run with asr='now' "
+            f"to transcribe locally (~{human})."
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": self.code,
+            "link": self.link,
+            "reason": self.reason,          # "rate_limited" | "transient"
+            "detail": self.detail,
+            "asr_estimate": self.estimate,
+            "options": [
+                {"option": "wait_and_recatch",
+                 "description": "Rate limits are temporary — re-run catch in "
+                                "a few minutes and captions are free and "
+                                "instant (a re-catch replaces the transcript)."},
+                {"option": "asr_now",
+                 "description": "Call catch again with asr='now' to "
+                                "transcribe locally with Whisper — "
+                                f"~{self.estimate.get('human', 'several minutes')} "
+                                "on this machine."},
+            ],
+            "next_step": (
+                "Tell the user captions are temporarily unavailable and give "
+                "them the choice: wait and re-catch (free, exact platform "
+                "timing) or start local transcription now with the time "
+                "estimate. Never start a long ASR run without telling them."
+            ),
+        }
+
+
 class UnsupportedFormatError(OpenPodError):
     """Content whose type OpenPod does not (deliberately) support."""
 

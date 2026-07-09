@@ -43,17 +43,28 @@ class CatchResult:
 def catch(link: str, *, workspace: Optional[Workspace] = None,
           kind: Optional[str] = None, transcript_path: Optional[str] = None,
           k_ideas: int = 8, index: bool = True,
-          prefer_captions: bool = True, confirmed: bool = False) -> CatchResult:
+          prefer_captions: bool = True, confirmed: bool = False,
+          asr: str = "auto", progress=None) -> CatchResult:
     ws = (workspace or Workspace()).ensure()
     library = Library(ws)
 
     from .crosswalk import Crosswalk
     from .ingest.resolve import resolve_full
 
+    # Caption language preference: the user's locale first, then fallback,
+    # then English — a Hebrew interview should fetch Hebrew captions.
+    settings = ws.effective_settings()
+    locale = settings["locale"]
+    languages = [l for l in (locale["preferred_language"],
+                             locale["fallback_language"], "en") if l]
+    languages = list(dict.fromkeys(languages))
+
     cw = Crosswalk(ws)
     resolution = resolve_full(
         link, kind=kind, transcript_path=transcript_path,
         prefer_captions=prefer_captions, confirmed=confirmed, crosswalk=cw,
+        asr=asr, asr_auto_threshold=settings["asr"]["auto_threshold_seconds"],
+        caption_languages=languages, progress=progress,
     )
     source, transcript = resolution.source, resolution.transcript
     if not len(transcript):
