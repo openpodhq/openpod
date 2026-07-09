@@ -39,6 +39,10 @@ mcp = ["mcp>=1.2"]
 # client is stdlib urllib, so this extra installs nothing — it only makes the
 # feature discoverable (`pip install 'openpod[sync]'`) and reserves the name.
 sync = []
+# Local player bridge (`openpod player-bridge`): lets an AI agent operate the
+# browser player. Stdlib-only (http.server + SSE), so this installs nothing — it
+# only makes the feature discoverable (`pip install 'openpod[bridge]'`).
+bridge = []
 # card.html always renders (stdlib-only); this only unlocks the best-effort
 # 2x card.png raster. Never a hard dependency — see src/openpod/card.py.
 card-png = ["playwright>=1.40"]

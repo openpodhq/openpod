@@ -48,6 +48,37 @@ def _ws(args) -> Workspace:
     return Workspace(getattr(args, "home", None))
 
 
+_DEFAULT_BRIDGE_PORT = 8788
+
+
+def _cmd_player_bridge(args) -> int:
+    """Run the local player bridge and block until interrupted."""
+    import threading
+
+    from .bridge import DEFAULT_PORT, PlayerBridge
+
+    ws = _ws(args)
+    bridge = PlayerBridge(ws, port=args.port or DEFAULT_PORT, code=args.code).start()
+    print(theme.banner())
+    print()
+    print(f"Player bridge listening on {theme.path(f'http://127.0.0.1:{bridge.port}')}")
+    print()
+    print("  Pair it once in the player: Settings → AI control → Connect a local bridge")
+    print(f"    port:  {bridge.port}")
+    print(f"    code:  {bridge.code}")
+    print()
+    print("  Point your agent's MCP config at `openpod-mcp` to get the player_* tools.")
+    print("  Commands you issue while no tab is open are queued and run on next connect.")
+    print("  Ctrl-C to stop.")
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:
+        print("\nstopping bridge…", file=sys.stderr)
+    finally:
+        bridge.stop()
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
@@ -742,6 +773,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ih.add_argument("file", help="path to an openpod_export JSON file")
     ih.set_defaults(func=_cmd_import_heard)
+
+    pb = sub.add_parser(
+        "player-bridge",
+        help="run the local bridge so an AI agent can operate the browser player",
+    )
+    pb.add_argument("--port", type=int, default=None,
+                    help=f"loopback port (default {_DEFAULT_BRIDGE_PORT})")
+    pb.add_argument("--code", default=None,
+                    help="fixed 6-digit pairing code (default: random each run)")
+    pb.set_defaults(func=_cmd_player_bridge)
 
     v = sub.add_parser("version", help="print version")
     v.set_defaults(func=_cmd_version)

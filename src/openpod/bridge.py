@@ -23,9 +23,12 @@ Stdlib only (house rule): ``http.server`` + ``json`` + ``threading``. No
 from __future__ import annotations
 
 import json
+import os
 import queue
 import secrets
 import threading
+import urllib.error
+import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -38,6 +41,28 @@ DEFAULT_PORT = 8788
 _MANIFEST_PATH = Path(__file__).with_name("player_manifest.json")
 _HEARTBEAT_SEC = 15.0
 _SENTINEL = object()  # unblocks an SSE sink on shutdown
+_MAX_AUTH_FAILS = 20  # lock the bridge after this many wrong tokens (anti-brute-force)
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+def _atomic_write(path: Path, text: str, *, mode: int = 0o600) -> None:
+    """Write a file all-or-nothing at a fixed mode: create a sibling temp at
+    `mode`, write, then os.replace onto the target. A crash mid-write leaves the
+    prior file intact; the secret is never briefly world-readable."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def _load_manifest() -> dict[str, dict]:
@@ -80,8 +105,9 @@ class PlayerBridge:
         self.code = code or _gen_code()
         self._outbox_path = self.ws.dot / "bridge-outbox.json"
         self._lock = threading.RLock()
-        self._sinks: set[queue.Queue] = set()  # one per connected tab
+        self._sinks: set[queue.Queue] = set()  # at most one active tab (single controller)
         self._pending: dict[str, _Pending] = {}
+        self._auth_fails = 0  # cumulative wrong tokens; lock at _MAX_AUTH_FAILS
         self._outbox: list[dict] = self._load_outbox()
         self._stopping = threading.Event()
         self._server: Optional[ThreadingHTTPServer] = None
@@ -95,6 +121,7 @@ class PlayerBridge:
         self.port = self._server.server_address[1]  # resolve an ephemeral :0
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
+        self._write_discovery()
         return self
 
     def stop(self) -> None:
@@ -105,6 +132,26 @@ class PlayerBridge:
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
+        self._clear_discovery()
+
+    @property
+    def discovery_path(self) -> Path:
+        return self.ws.dot / "bridge.json"
+
+    def _write_discovery(self) -> None:
+        """Publish {port, code} so same-machine MCP tools can find + auth to the
+        bridge. Contains the pairing secret → written 0600 from creation."""
+        _atomic_write(
+            self.discovery_path,
+            json.dumps({"port": self.port, "code": self.code}),
+            mode=0o600,
+        )
+
+    def _clear_discovery(self) -> None:
+        try:
+            self.discovery_path.unlink()
+        except OSError:
+            pass
 
     def status(self) -> dict:
         with self._lock:
@@ -124,8 +171,9 @@ class PlayerBridge:
             return []
 
     def _save_outbox(self) -> None:
-        self.ws.dot.mkdir(parents=True, exist_ok=True)
-        self._outbox_path.write_text(json.dumps(self._outbox), encoding="utf-8")
+        # Atomic + 0600: a crash mid-write never corrupts the durable queue, and
+        # the queued command envelopes aren't world-readable.
+        _atomic_write(self._outbox_path, json.dumps(self._outbox), mode=0o600)
 
     # -- command entry point (called by the MCP tools) --------------------- #
 
@@ -135,12 +183,25 @@ class PlayerBridge:
         ``queued``) or fails fast for session acts/reads."""
         name = action.get("type", "")
         envelope = {"id": uuid.uuid4().hex, "source": "bridge", "action": action}
+        not_connected = {
+            "ok": False,
+            "error": {
+                "code": "player_not_connected",
+                "message": "No player tab is connected to the bridge.",
+                "fix": "Open the OpenPod player and connect the bridge in Settings.",
+            },
+        }
 
+        # Decide connected-vs-queue-vs-fail AND register the pending / enqueue
+        # under ONE lock, so a tab connecting at this instant can't strand the
+        # command (its _register_sink either sees the queued item or we see its
+        # sink). RLock lets _enqueue re-acquire.
+        pending: Optional[_Pending] = None
         with self._lock:
-            connected = len(self._sinks) > 0
-
-        if not connected:
-            if name in QUEUEABLE:
+            if self._sinks:
+                pending = _Pending()
+                self._pending[envelope["id"]] = pending
+            elif name in QUEUEABLE:
                 self._enqueue(envelope)
                 return {
                     "ok": True,
@@ -148,19 +209,15 @@ class PlayerBridge:
                     "id": envelope["id"],
                     "note": "No player tab connected — queued; runs when the player next connects.",
                 }
-            return {
-                "ok": False,
-                "error": {
-                    "code": "player_not_connected",
-                    "message": "No player tab is connected to the bridge.",
-                    "fix": "Open the OpenPod player and connect the bridge in Settings.",
-                },
-            }
+            else:
+                return not_connected
 
-        pending = _Pending()
-        with self._lock:
-            self._pending[envelope["id"]] = pending
-        self._deliver(envelope)
+        # Deliver outside the lock (I/O). If the tab vanished in between so no
+        # sink received it, fail fast rather than block the full timeout.
+        if self._deliver(envelope) == 0:
+            with self._lock:
+                self._pending.pop(envelope["id"], None)
+            return not_connected
         if pending.event.wait(timeout):
             return pending.result
         with self._lock:
@@ -172,11 +229,13 @@ class PlayerBridge:
 
     # -- internal delivery / results --------------------------------------- #
 
-    def _deliver(self, envelope: dict) -> None:
+    def _deliver(self, envelope: dict) -> int:
+        """Deliver to the active sink(s). Returns how many received it."""
         with self._lock:
             sinks = list(self._sinks)
         for sink in sinks:
             sink.put(envelope)
+        return len(sinks)
 
     def _enqueue(self, envelope: dict) -> None:
         with self._lock:
@@ -186,8 +245,17 @@ class PlayerBridge:
             self._save_outbox()
 
     def _register_sink(self) -> queue.Queue:
+        """Register the controlling tab. Single active sink: any existing sink is
+        EVICTED (newest tab wins). This keeps reconnects robust — a stale prior
+        connection is replaced rather than blocking the new one — and guarantees
+        a command is only ever delivered to ONE tab, so it can't execute twice.
+        (Two tabs both driving one bridge will ping-pong; rare, and neither
+        double-executes.)"""
         sink: queue.Queue = queue.Queue()
         with self._lock:
+            for old in list(self._sinks):
+                old.put(_SENTINEL)
+                self._sinks.discard(old)
             self._sinks.add(sink)
             pending_outbox = list(self._outbox)
         # Flush the outbox to the newly-connected tab, in order.
@@ -211,7 +279,24 @@ class PlayerBridge:
             pending.event.set()
 
     def _valid_token(self, token: Optional[str]) -> bool:
-        return bool(token) and secrets.compare_digest(token, self.code)
+        """Constant-time token check with a cumulative lockout. After
+        _MAX_AUTH_FAILS wrong tokens the bridge refuses all auth until restart —
+        a 6-digit code is otherwise brute-forceable over loopback. A correct
+        token resets the counter, so a legit tab's reconnects never lock it out."""
+        with self._lock:
+            if self._auth_fails >= _MAX_AUTH_FAILS:
+                return False
+            ok = bool(token) and secrets.compare_digest(token, self.code)
+            if ok:
+                self._auth_fails = 0
+            else:
+                self._auth_fails += 1
+            return ok
+
+    @property
+    def locked_out(self) -> bool:
+        with self._lock:
+            return self._auth_fails >= _MAX_AUTH_FAILS
 
 
 # --------------------------------------------------------------------------- #
@@ -226,32 +311,56 @@ def _make_handler(bridge: PlayerBridge):
         def log_message(self, *args) -> None:  # keep the CLI quiet
             pass
 
-        def _cors(self) -> None:
-            origin = self.headers.get("Origin", "*")
-            self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "content-type")
+        def _host_ok(self) -> bool:
+            """Reject any Host that isn't loopback — blocks DNS-rebinding, where
+            a public page resolves an attacker domain to 127.0.0.1 to bypass the
+            same-origin/loopback boundary."""
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]")
+            return host == "" or host in {"127.0.0.1", "localhost", "::1"}
 
-        def _json(self, code: int, payload: dict) -> None:
+        def _cors(self) -> None:
+            # Reflect Origin ONLY on authorized/liveness responses. Failure
+            # responses carry no CORS, so a cross-origin page can't read them —
+            # closing the token-validity oracle that made the code guessable.
+            origin = self.headers.get("Origin")
+            if origin:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+
+        def _json(self, code: int, payload: dict, *, cors: bool = False) -> None:
             body = json.dumps(payload).encode("utf-8")
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
-            self._cors()
+            if cors:
+                self._cors()
             self.end_headers()
             self.wfile.write(body)
 
-        def do_OPTIONS(self) -> None:  # CORS preflight for the POST
+        def _drain(self) -> bytes:
+            """Read the request body so an early return can't desync the next
+            keep-alive request on this connection."""
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            return self.rfile.read(length) if length > 0 else b""
+
+        def do_OPTIONS(self) -> None:  # CORS preflight (carries no token)
             self.send_response(204)
             self._cors()
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "content-type")
             self.send_header("Content-Length", "0")
             self.end_headers()
 
         def do_GET(self) -> None:
+            if not self._host_ok():
+                self._json(403, {"ok": False, "error": "bad_host"})
+                return
             parsed = urlparse(self.path)
             if parsed.path == "/bridge/health":
-                st = bridge.status()
-                self._json(200, {"ok": True, "connected": st["connected"], "outbox": st["outbox"]})
+                # Bare liveness only — no connected/outbox state leaked. CORS so
+                # the tab can probe "bridge up?" to tell a wrong code from a
+                # dead port.
+                self._json(200, {"ok": True}, cors=True)
                 return
             if parsed.path == "/bridge/events":
                 self._sse(parse_qs(parsed.query))
@@ -259,32 +368,49 @@ def _make_handler(bridge: PlayerBridge):
             self._json(404, {"ok": False, "error": "not_found"})
 
         def do_POST(self) -> None:
+            if not self._host_ok():
+                self._drain()
+                self._json(403, {"ok": False, "error": "bad_host"})
+                return
             parsed = urlparse(self.path)
-            if parsed.path != "/bridge/results":
+            token = parse_qs(parsed.query).get("token", [None])[0]
+            raw = self._drain()  # always consume the body (keep-alive safety)
+            if parsed.path not in ("/bridge/results", "/bridge/call"):
                 self._json(404, {"ok": False, "error": "not_found"})
                 return
-            token = parse_qs(parsed.query).get("token", [None])[0]
             if not bridge._valid_token(token):
-                self._json(403, {"ok": False, "error": "forbidden"})
+                self._json(403, {"ok": False, "error": "forbidden"})  # no CORS
                 return
-            length = int(self.headers.get("Content-Length", 0) or 0)
             try:
-                body = json.loads(self.rfile.read(length) or b"{}")
+                body = json.loads(raw or b"{}")
             except ValueError:
-                self._json(400, {"ok": False, "error": "bad_json"})
+                self._json(400, {"ok": False, "error": "bad_json"}, cors=True)
                 return
+
+            if parsed.path == "/bridge/call":
+                # The agent's MCP tool calling in: relay to the tab, block for
+                # the result (or queue/fail), return it as the HTTP response.
+                action = body.get("action")
+                if not isinstance(action, dict) or "type" not in action:
+                    self._json(400, {"ok": False, "error": "bad_action"}, cors=True)
+                    return
+                self._json(200, bridge.call(action), cors=True)
+                return
+
+            # /bridge/results — the tab returning a command outcome.
             cmd_id = body.get("id")
             if not cmd_id:
-                self._json(400, {"ok": False, "error": "missing_id"})
+                self._json(400, {"ok": False, "error": "missing_id"}, cors=True)
                 return
             bridge._on_result(cmd_id, body.get("result", {}))
-            self._json(200, {"ok": True})
+            self._json(200, {"ok": True}, cors=True)
 
         def _sse(self, qs: dict) -> None:
             token = qs.get("token", [None])[0]
             if not bridge._valid_token(token):
-                self._json(403, {"ok": False, "error": "forbidden"})
+                self._json(403, {"ok": False, "error": "forbidden"})  # no CORS
                 return
+            sink = bridge._register_sink()  # evicts any prior tab (newest wins)
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
@@ -292,7 +418,6 @@ def _make_handler(bridge: PlayerBridge):
             self._cors()
             self.end_headers()
 
-            sink = bridge._register_sink()
             try:
                 self.wfile.write(b": connected\n\n")
                 self.wfile.flush()
@@ -314,3 +439,48 @@ def _make_handler(bridge: PlayerBridge):
                 bridge._unregister_sink(sink)
 
     return Handler
+
+
+# --------------------------------------------------------------------------- #
+# Client side — used by the MCP tools to reach a running bridge process
+# --------------------------------------------------------------------------- #
+
+
+def read_discovery(ws: Workspace) -> Optional[dict]:
+    """Read {port, code} written by a running bridge, or None."""
+    try:
+        return json.loads((ws.dot / "bridge.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def bridge_call(ws: Workspace, action: dict, *, timeout: float = 12.0) -> dict:
+    """Send one PlayerAction to the running bridge and return its result. Used by
+    the ``player_*`` MCP tools — a thin loopback HTTP client to the hub."""
+    disc = read_discovery(ws)
+    if not disc:
+        return {
+            "ok": False,
+            "error": {
+                "code": "bridge_not_running",
+                "message": "The player bridge isn't running.",
+                "fix": "Start it in a terminal: openpod player-bridge",
+            },
+        }
+    url = f"http://127.0.0.1:{disc['port']}/bridge/call?token={disc['code']}"
+    data = json.dumps({"action": action}).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.URLError as e:
+        return {
+            "ok": False,
+            "error": {
+                "code": "bridge_unreachable",
+                "message": f"Could not reach the bridge: {e}",
+                "fix": "Is `openpod player-bridge` still running?",
+            },
+        }
