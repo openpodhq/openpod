@@ -484,6 +484,35 @@ def build_server():
         ws = _workspace()
         return _sync.pull_heard(ws) if heard else _sync.pull_bookmarks(ws)
 
+    # -- player control: operate the browser player via the local bridge ----- #
+    # Generated from the checked-in manifest (a copy of app/src/agent/manifest).
+    # Each tool forwards a PlayerAction to a running `openpod player-bridge`,
+    # which relays it to the connected tab (or queues durable state acts). Args
+    # go in a single `args` object matching the tool's documented params.
+
+    from .bridge import MANIFEST as _player_manifest, bridge_call
+
+    def _player_description(spec: dict) -> str:
+        lines = [spec["summary"], "",
+                 f"Params (pass as `args`): {spec['params']}",
+                 f"Returns: {spec['returns']}"]
+        if spec.get("session"):
+            lines.append("Needs a live player tab — cannot be queued.")
+        elif spec.get("queueable"):
+            lines.append("Runs now if a tab is connected; otherwise queued until one is.")
+        return "\n".join(lines)
+
+    def _make_player_tool(action_type: str):
+        def player_tool(args: Optional[dict] = None) -> dict:
+            return bridge_call(_workspace(), {"type": action_type, **(args or {})})
+
+        return player_tool
+
+    for _name, _spec in _player_manifest.items():
+        mcp.tool(name=f"player_{_name}", description=_player_description(_spec))(
+            _make_player_tool(_name)
+        )
+
     # -- skills: the packaged features, exposed as MCP prompts --------------- #
 
     from .skills import list_skills
