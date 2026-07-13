@@ -8,6 +8,19 @@ All notable changes to OpenPod are documented here. Format loosely follows
 First Stage 1 alpha: local-pure, pull-only.
 
 ### Added
+- **`summary.md` — the cross-session memory artifact**: a durable, local
+  distillation of an episode, written by the agent (or user) after actually
+  engaging with it, and loaded by future sessions as context. The contract
+  is deliberately minimal: OpenPod owns placement and identity frontmatter
+  (entry_id, episode_key — sync-ready for the cloud tier, updated_at,
+  revision count); the body — structure, language, depth, relevance — is
+  entirely the author's. `write_summary(append=True)` lets sessions add
+  dated takes without losing prior ones. Surfaces: MCP `save_summary` +
+  `recall_summaries` (the "load what past sessions learned" call),
+  summary included in `get_briefing`, CLI `openpod summary` (read / write
+  / list), and the **Remember This** skill — guidance (personalize from
+  the session, exclude what didn't matter, cite moments, budget tokens),
+  explicitly defaults-not-mandates.
 - **No more silent Whisper fallback** — a cost-based gate keeps interaction
   fast: every ASR run is *announced* (why captions failed, the wall-clock
   estimate, and that it's local compute — no tokens or API cost — recorded

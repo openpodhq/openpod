@@ -281,6 +281,46 @@ def _cmd_doctor(args) -> int:
     return 1 if foreign_pending else 0
 
 
+def _cmd_summary(args) -> int:
+    from .library import Library
+
+    library = Library(_ws(args))
+
+    if not args.entry_id:
+        # Recall listing across the library.
+        rows = []
+        for entry in library:
+            body = entry.read_summary(body_only=True)
+            if body:
+                rows.append((entry.entry_id, body.strip().splitlines()[0][:80]))
+        if not rows:
+            print("no summaries yet — agents write them with save_summary "
+                  "(or: openpod summary <entry> --from notes.md)")
+            return 0
+        for entry_id, first in rows:
+            print(f"{entry_id}\n    {first}")
+        return 0
+
+    entry = library.get(args.entry_id)
+    if entry is None:
+        print(f"error: no caught episode with id {args.entry_id!r}", file=sys.stderr)
+        return 1
+
+    if args.from_file:
+        text = (sys.stdin.read() if args.from_file == "-"
+                else Path(args.from_file).read_text(encoding="utf-8"))
+        path = entry.write_summary(text, append=args.append)
+        print(f"summary: {theme.path(str(path))}")
+        return 0
+
+    body = entry.read_summary(body_only=not args.raw)
+    if body is None:
+        print(f"no summary for {args.entry_id} yet")
+        return 1
+    print(body.strip())
+    return 0
+
+
 def _cmd_export(args) -> int:
     from .exports import export_timestamps
 
@@ -651,6 +691,19 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="quarantine foreign files under library/_scratch/")
     dr.add_argument("--json", action="store_true")
     dr.set_defaults(func=_cmd_doctor)
+
+    su = sub.add_parser("summary",
+                        help="read/write an episode's summary.md — the "
+                             "cross-session memory record")
+    su.add_argument("entry_id", nargs="?",
+                    help="entry to read; omit to list all summaries")
+    su.add_argument("--from", dest="from_file", metavar="FILE",
+                    help="write the summary from FILE ('-' for stdin)")
+    su.add_argument("--append", action="store_true",
+                    help="append after the existing body instead of replacing")
+    su.add_argument("--raw", action="store_true",
+                    help="include the product-owned frontmatter when reading")
+    su.set_defaults(func=_cmd_summary)
 
     e = sub.add_parser("export-timestamps", help="emit timed segments + deep-links")
     e.add_argument("entry_id")

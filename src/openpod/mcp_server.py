@@ -285,14 +285,85 @@ def build_server():
             if entry.ideas_path.exists() else None,
             "notes": entry.notes_path.read_text(encoding="utf-8")
             if entry.notes_path.exists() else None,
+            "summary": entry.read_summary(body_only=True),
             "transcript": transcript.to_dict() if transcript else None,
             "paths": {
                 "dir": str(entry.dir),
                 "briefing": str(entry.briefing_path),
                 "ideas": str(entry.ideas_path),
                 "notes": str(entry.notes_path),
+                "summary": str(entry.summary_path),
             },
         }
+
+    @mcp.tool()
+    def save_summary(entry_id: str, markdown: str, append: bool = False) -> dict:
+        """Save the episode's summary — the durable, cross-session memory
+        record — to summary.md in the local library.
+
+        Author it from the *session*, not just the transcript: what the user
+        engaged with, asked about, disagreed with, or plans to act on;
+        exclude the parts that didn't matter to them. Cite moments with the
+        deep-links from the catch/search results so any future session can
+        jump to the source. Keep it compact — it will be loaded as context
+        by future sessions (and later synced across devices), so every
+        paragraph should earn its tokens. Structure, language, and depth are
+        yours and the user's to choose — OpenPod only owns the file's
+        location and identity frontmatter.
+
+        append=true adds this session's take after the existing body (e.g.
+        as a dated section) instead of rewriting the distillation. notes.md
+        remains the user's own voice — never move it in here."""
+        from .library import Library
+
+        entry = Library(_workspace()).get(entry_id)
+        if entry is None:
+            raise ValueError(
+                f"no caught episode with id {entry_id!r} — "
+                "list_entries shows what's in the library")
+        path = entry.write_summary(markdown, append=append)
+        return {"entry_id": entry_id, "path": str(path),
+                "revisions": _summary_revisions(entry)}
+
+    @mcp.tool()
+    def recall_summaries(query: Optional[str] = None, limit: int = 20) -> list[dict]:
+        """The cross-session recall surface: every episode summary in the
+        library (newest first), with an excerpt. Call this at the start of a
+        podcast-related session to load what past sessions already learned —
+        it's the difference between continuing a conversation and starting
+        over. `query` filters by show/title/summary text (simple substring;
+        use `search` for transcript-level search)."""
+        from .library import Library
+
+        out = []
+        for entry in Library(_workspace()):
+            body = entry.read_summary(body_only=True)
+            if not body:
+                continue
+            if query:
+                hay = " ".join([entry.show(), entry.title(), body]).lower()
+                if query.lower() not in hay:
+                    continue
+            full = entry.read_summary() or ""
+            import re as _re
+            m = _re.search(r"^updated_at:\s*(\S+)", full, _re.M)
+            out.append({
+                "entry_id": entry.entry_id,
+                "show": entry.show(),
+                "title": entry.title(),
+                "updated_at": m.group(1) if m else None,
+                "excerpt": body.strip()[:400],
+                "path": str(entry.summary_path),
+            })
+        out.sort(key=lambda d: d["updated_at"] or "", reverse=True)
+        return out[:limit]
+
+    def _summary_revisions(entry) -> int:
+        import re as _re
+
+        full = entry.read_summary() or ""
+        m = _re.search(r"^revisions:\s*(\d+)", full, _re.M)
+        return int(m.group(1)) if m else 0
 
     @mcp.tool()
     def persona() -> dict:

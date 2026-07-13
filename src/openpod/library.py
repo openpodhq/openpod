@@ -19,6 +19,7 @@ Layout (mirrors the Stage 1 spec)::
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -67,6 +68,10 @@ class LibraryEntry:
     @property
     def notes_path(self) -> Path:
         return self.dir / "notes.md"
+
+    @property
+    def summary_path(self) -> Path:
+        return self.dir / "summary.md"
 
     @property
     def clips_dir(self) -> Path:
@@ -160,6 +165,53 @@ class LibraryEntry:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.ideas_path.write_text(markdown, encoding="utf-8")
 
+    # -- summary: the cross-session memory artifact --------------------------- #
+    #
+    # summary.md is the episode's durable distillation — written by an agent
+    # (or the user) after actually engaging with the episode, and read back
+    # by *future* sessions as context. The product's contract is deliberately
+    # minimal: OpenPod owns WHERE it lives and the identity frontmatter
+    # (entry_id / episode_key / timestamps, so it can sync and be recalled
+    # from any device later); the BODY — structure, language, depth, what
+    # counts as relevant — belongs entirely to whoever writes it.
+
+    def read_summary(self, *, body_only: bool = False) -> Optional[str]:
+        if not self.summary_path.exists():
+            return None
+        text = self.summary_path.read_text(encoding="utf-8")
+        return _strip_frontmatter(text) if body_only else text
+
+    def write_summary(self, markdown: str, *, append: bool = False) -> Path:
+        """Write (or append a session's addition to) summary.md.
+
+        ``append=True`` adds the text after the existing body — the caller
+        decides whether a session adds a dated section or rewrites the whole
+        distillation. Frontmatter is product-owned and regenerated on every
+        write; any frontmatter inside ``markdown`` is stripped rather than
+        duplicated."""
+        self.dir.mkdir(parents=True, exist_ok=True)
+        body = _strip_frontmatter(markdown).strip()
+        existing = self.read_summary(body_only=True)
+        if append and existing:
+            body = existing.rstrip() + "\n\n" + body
+        meta = self.read_meta()
+        revisions = 1
+        old = self.read_summary()
+        if old is not None:
+            m = re.search(r"^revisions:\s*(\d+)", old, re.M)
+            revisions = (int(m.group(1)) if m else 0) + 1
+        front = "\n".join(filter(None, [
+            "---",
+            f"entry_id: {self.entry_id}",
+            f"episode_key: {meta['episode_key']}" if meta.get("episode_key") else None,
+            f"updated_at: {_now()}",
+            f"revisions: {revisions}",
+            "---",
+        ]))
+        self.summary_path.write_text(front + "\n\n" + body + "\n",
+                                     encoding="utf-8")
+        return self.summary_path
+
     def append_note(self, note: str) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
         with self.notes_path.open("a", encoding="utf-8") as fh:
@@ -223,3 +275,10 @@ class Library:
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+_frontmatter_re = re.compile(r"\A---\n.*?\n---\n?", re.S)
+
+
+def _strip_frontmatter(text: str) -> str:
+    return _frontmatter_re.sub("", text, count=1)
