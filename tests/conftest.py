@@ -46,6 +46,14 @@ SAMPLE_RSS = textwrap.dedent(
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_global_home(tmp_path_factory, monkeypatch):
+    """Keep tests hermetic: the global persona layer (~/.openpod) must never
+    leak the developer's real file into test behavior."""
+    monkeypatch.setenv("OPENPOD_GLOBAL_HOME",
+                       str(tmp_path_factory.mktemp("global-dot")))
+
+
 @pytest.fixture
 def workspace(tmp_path) -> Workspace:
     return Workspace(tmp_path).ensure()

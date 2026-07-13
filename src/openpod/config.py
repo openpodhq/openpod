@@ -151,6 +151,20 @@ class Workspace:
     def settings_file(self) -> Path:
         return self.dot / "settings.yaml"
 
+    # -- the global (per-user) layer ------------------------------------------ #
+
+    @property
+    def global_dot(self) -> Path:
+        """``~/.openpod`` — the per-user layer that is true in every
+        workspace (global persona; later, the synced account state).
+        ``$OPENPOD_GLOBAL_HOME`` overrides it (mainly for tests)."""
+        root = os.environ.get("OPENPOD_GLOBAL_HOME")
+        return Path(root).expanduser() if root else Path.home() / DOTDIR
+
+    @property
+    def global_persona_file(self) -> Path:
+        return self.global_dot / "persona.md"
+
     # -- user settings ------------------------------------------------------- #
 
     def effective_settings(self) -> dict:

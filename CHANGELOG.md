@@ -8,6 +8,22 @@ All notable changes to OpenPod are documented here. Format loosely follows
 First Stage 1 alpha: local-pure, pull-only.
 
 ### Added
+- **Two-layer persona: who you are vs. what this folder is for.** Global
+  (`~/.openpod/persona.md`): role, language & style, standing
+  interests/filters, what you want from long-form — true in every
+  workspace, the layer a cloud tier would sync. Workspace
+  (`.openpod/persona.md`): current projects, local amplify/filter topics,
+  and the machine-derived blocks (derived from *this* library). The MCP
+  `persona` tool returns both layers labeled — identity/language lean
+  global, relevance decisions lean workspace — and routes writes by kind.
+  Existing single-file personas get a **split proposal**: sections are
+  classified (Role → global, Current projects → local, unknowns → ask) and
+  offered as one multiple-choice confirmation — the user picks, never
+  writes prose — then `persona_split` / `openpod persona split --to-global`
+  moves exactly the confirmed sections. Machine-owned blocks are never
+  offered and never move. CLI: `persona init|show --global`, `persona
+  split`. House rule codified in the skill: users choose from options
+  mined from evidence; system files never demand elaboration.
 - **`summary.md` — the cross-session memory artifact**: a durable, local
   distillation of an episode, written by the agent (or user) after actually
   engaging with it, and loaded by future sessions as context. The contract

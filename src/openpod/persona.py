@@ -1,10 +1,21 @@
-"""Local, evolving persona.
+"""Local, evolving persona — two layers.
 
-``persona.md`` is a **user-owned workspace file the agent reads** — never an
-OpenPod-hosted profile. A skill interviews the user and researches their
-workspace to seed it; it then re-derives from the growing library (what was
-saved, clipped, asked, flagged) so it sharpens with use. Stage 1 evolves it from
-*explicit* signal only; behavioural signal (replay/skip) is Stage 2.
+Two different kinds of facts, two files:
+
+* **Global** (``~/.openpod/persona.md``): *who you are* — role, language,
+  briefing style, standing filters. True in every workspace; the layer a
+  cloud tier would sync.
+* **Workspace** (``.openpod/persona.md``): *what this folder is for* — the
+  project's focus, what "relevant" means here, plus the machine-derived
+  blocks (which are derived from *this* library, so they belong here).
+
+Both are **user-owned files the agent reads** — never an OpenPod-hosted
+profile. Reads return both layers labeled; the agent interprets (identity
+and language lean global, relevance decisions lean workspace). Setup
+follows the house interaction rule: the user picks from options mined from
+evidence — they never elaborate into a blank box. Stage 1 evolves the
+persona from *explicit* signal only; behavioural signal (replay/skip) is
+Stage 2.
 """
 
 from __future__ import annotations
@@ -46,31 +57,61 @@ INTERVIEW_QUESTIONS = [
 ]
 
 _TEMPLATE = """\
-# Persona
+# Persona — this workspace
 
-_A local, user-owned file your AI agent reads to personalize briefings and
-triage. Edit it freely. OpenPod never uploads it._
-
-## Role
-<!-- Who you are and what you're responsible for. -->
+_What this folder is about. Your AI agent reads it to decide what's
+relevant **here**; who you are globally lives in ~/.openpod/persona.md.
+Edit freely. OpenPod never uploads it._
 
 ## Current projects
-<!-- 2–3 things you're actively working on; briefings get tuned to these. -->
+<!-- 2–3 things this workspace is actively about; briefings tune to these. -->
 
 ## Interests (amplify)
-<!-- Topics to surface and go deep on. -->
+<!-- Topics to surface and go deep on — in this workspace. -->
 
 ## Not interested (filter)
-<!-- Topics to skip or compress hard. Topics, not shows: an unfamiliar
-     source is discovery, not noise — filtering happens on what's said,
-     never on who says it. -->
-
-## What I want from long-form
-<!-- e.g. "the 5 minutes that change my mind", decisions, named tools, numbers. -->
+<!-- Topics to skip or compress hard — here. Topics, not shows: an
+     unfamiliar source is discovery, not noise — filtering happens on
+     what's said, never on who says it. -->
 
 ## Derived from my library
 <!-- Auto-refreshed by `openpod persona derive`. -->
 """
+
+_GLOBAL_TEMPLATE = """\
+# Persona — global
+
+_Who you are, in every workspace: role, language, how you like briefings.
+A local, user-owned file; a paid sync tier may later carry it across
+devices — it is never required to. Edit freely._
+
+## Role
+<!-- Who you are and what you're responsible for. -->
+
+## Language & style
+<!-- Preferred language for briefings/captions; how you like things written. -->
+
+## Standing interests
+<!-- Topics you always care about, regardless of project. -->
+
+## Standing filters
+<!-- Topics to always skip or compress, everywhere. -->
+
+## What I want from long-form
+<!-- e.g. "the 5 minutes that change my mind", decisions, named tools, numbers. -->
+"""
+
+# Headings that describe the *person* (global layer) vs the *folder*
+# (workspace layer). propose_split() classifies existing sections with
+# these; anything unrecognized goes into the "ask the user" bucket —
+# always as a multiple-choice pick, never a writing exercise.
+GLOBAL_SECTIONS = {"role", "language & style", "language", "style",
+                   "standing interests", "standing filters",
+                   "what i want from long-form"}
+WORKSPACE_SECTIONS = {"current projects", "interests (amplify)",
+                      "not interested (filter)",
+                      "derived from my library",
+                      "imported interests (opt-in)"}
 
 
 class Persona:
@@ -99,6 +140,103 @@ class Persona:
         """The questions a persona skill asks. (The agent runs the interview.)"""
         return list(INTERVIEW_QUESTIONS)
 
+    # -- the global layer ----------------------------------------------------- #
+
+    @property
+    def global_path(self):
+        return self.workspace.global_persona_file
+
+    def global_exists(self) -> bool:
+        return self.global_path.exists()
+
+    def read_global(self) -> Optional[str]:
+        return (self.global_path.read_text(encoding="utf-8")
+                if self.global_exists() else None)
+
+    def init_global(self, *, force: bool = False) -> str:
+        self.global_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.global_exists() and not force:
+            return str(self.global_path)
+        self.global_path.write_text(_GLOBAL_TEMPLATE, encoding="utf-8")
+        return str(self.global_path)
+
+    def read_layers(self) -> dict:
+        """Both layers, labeled — the agent interprets precedence (identity
+        and language lean global; relevance decisions lean workspace)."""
+        return {
+            "global": {"path": str(self.global_path),
+                       "exists": self.global_exists(),
+                       "content": self.read_global()},
+            "workspace": {"path": str(self.path),
+                          "exists": self.exists(),
+                          "content": self.read()},
+        }
+
+    # -- splitting an existing single-layer persona ---------------------------- #
+
+    def propose_split(self) -> Optional[dict]:
+        """When a workspace persona predates the global layer, propose which
+        sections belong to the person vs the folder.
+
+        Returns None when there's nothing to split (no workspace persona, or
+        global already exists). The proposal is multiple-choice material:
+        the user picks from ``proposed_global`` / ``unclassified`` — they
+        never have to write anything. Machine-owned sections are never
+        offered."""
+        if self.global_exists() or not self.exists():
+            return None
+        sections = _sections(self.read() or "")
+        proposal = {"proposed_global": [], "stays_local": [], "unclassified": []}
+        for heading, body in sections:
+            key = heading.strip().lower()
+            has_content = any(l.strip() and not l.strip().startswith("<!--")
+                              for l in body.splitlines())
+            item = {"section": heading, "excerpt": body.strip()[:200],
+                    "empty": not has_content}
+            if heading in [m.lstrip("# ").strip() for m in MACHINE_MARKERS] \
+                    or key in WORKSPACE_SECTIONS:
+                proposal["stays_local"].append(item)
+            elif key in GLOBAL_SECTIONS:
+                proposal["proposed_global"].append(item)
+            else:
+                proposal["unclassified"].append(item)
+        if not proposal["proposed_global"] and not proposal["unclassified"]:
+            return None
+        return proposal
+
+    def apply_split(self, to_global: list[str]) -> dict:
+        """Move the named sections from the workspace persona into the
+        global one. Call only after the user confirmed the selection
+        (multiple-choice, per propose_split). Machine-owned sections are
+        refused. Idempotent per section: already-moved names are skipped."""
+        machine = {m.lstrip("# ").strip().lower() for m in MACHINE_MARKERS}
+        for name in to_global:
+            if name.strip().lower() in machine:
+                raise ValueError(f"machine-owned section can't move: {name!r}")
+        text = self.read() or ""
+        sections = _sections(text)
+        by_name = {h.strip().lower(): (h, b) for h, b in sections}
+
+        self.init_global()
+        global_text = self.read_global() or _GLOBAL_TEMPLATE
+        moved, missing = [], []
+        for name in to_global:
+            got = by_name.get(name.strip().lower())
+            if got is None:
+                missing.append(name)
+                continue
+            heading, body = got
+            global_text = _upsert_section(global_text, heading, body)
+            text = _remove_section(text, heading)
+            moved.append(heading)
+
+        if moved:
+            self.global_path.write_text(global_text, encoding="utf-8")
+            self.path.write_text(text, encoding="utf-8")
+        return {"moved": moved, "missing": missing,
+                "global_path": str(self.global_path),
+                "workspace_path": str(self.path)}
+
     def derive(self, *, top_terms: int = 20) -> str:
         """Summarize what the library reveals and refresh the derived section."""
         library = Library(self.workspace)
@@ -126,6 +264,57 @@ class Persona:
         text = self.read() or _TEMPLATE
         self.path.write_text(_splice_section(text, marker, block),
                              encoding="utf-8")
+
+
+def _sections(text: str) -> list[tuple[str, str]]:
+    """``[(heading, body)]`` for every ``## `` section in a persona file."""
+    out: list[tuple[str, str]] = []
+    lines = text.splitlines()
+    current: Optional[str] = None
+    body: list[str] = []
+    for line in lines:
+        if line.startswith("## "):
+            if current is not None:
+                out.append((current, "\n".join(body)))
+            current, body = line[3:].strip(), []
+        elif current is not None:
+            body.append(line)
+    if current is not None:
+        out.append((current, "\n".join(body)))
+    return out
+
+
+def _remove_section(text: str, heading: str) -> str:
+    lines = text.splitlines()
+    start = next((i for i, l in enumerate(lines)
+                  if l.strip() == f"## {heading}"), None)
+    if start is None:
+        return text
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith("## ")), len(lines))
+    kept = lines[:start] + lines[end:]
+    return "\n".join(kept).rstrip("\n") + "\n"
+
+
+def _upsert_section(text: str, heading: str, body: str) -> str:
+    """Replace the section's body if the heading exists (template comment
+    placeholders count as replaceable); append the section otherwise."""
+    lines = text.splitlines()
+    body_lines = ["", *body.strip("\n").splitlines(), ""]
+    start = next((i for i, l in enumerate(lines)
+                  if l.strip() == f"## {heading}"), None)
+    if start is not None:
+        end = next((i for i in range(start + 1, len(lines))
+                    if lines[i].startswith("## ")), len(lines))
+        existing = [l for l in lines[start + 1:end]
+                    if l.strip() and not l.strip().startswith("<!--")]
+        if existing:
+            # Real content on both sides: keep both rather than clobber.
+            body_lines = [*existing, "", *body.strip("\n").splitlines(), ""]
+        lines = lines[:start + 1] + body_lines + lines[end:]
+    else:
+        lines += [f"## {heading}", *body_lines]
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def _splice_section(text: str, marker: str, block: str) -> str:

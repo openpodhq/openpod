@@ -75,7 +75,8 @@ def build_server():
             # Deny-and-continue: structured explanation, not a bare failure.
             return e.to_dict()
         result = _catch_dict(r)
-        if not Persona(ws).exists():
+        _p = Persona(ws)
+        if not (_p.exists() or _p.global_exists()):
             result["next_step"] = (
                 "No persona.md yet, so the briefing you author will be "
                 "generic. Offer the user the 'Set Up My Persona' skill "
@@ -367,19 +368,53 @@ def build_server():
 
     @mcp.tool()
     def persona() -> dict:
-        """Read the local persona.md the reader owns, to personalize briefings
-        and triage. Returns the path so writes can be reported to the user."""
+        """Read the user-owned persona — BOTH layers. `global` is who the
+        user is everywhere (role, language, style, standing filters:
+        ~/.openpod/persona.md); `workspace` is what this folder is for
+        (project focus, local interests, the derived block). Identity and
+        language lean global; relevance decisions lean workspace.
+
+        Route writes by kind: "I prefer Hebrew" → global; "this project is
+        about X" → workspace. When `split_proposal` is present, an older
+        single-file persona predates the global layer — offer the split as a
+        MULTIPLE-CHOICE confirmation (list the proposed sections, the user
+        picks/deselects, then call persona_split). Never make the user
+        write prose to organize system files, and never split without
+        their confirmation."""
         from .persona import Persona
 
         p = Persona(_workspace())
-        return {
-            "path": str(p.path),
-            "exists": p.exists(),
-            "content": p.read() or (
-                "No persona yet. Ask the user the interview questions and "
-                "write persona.md, or run `openpod persona init`."
-            ),
-        }
+        layers = p.read_layers()
+        if not layers["workspace"]["exists"] and not layers["global"]["exists"]:
+            layers["next_step"] = (
+                "No persona yet. Run the 'Set Up My Persona' skill: scan for "
+                "evidence, then multi-select questions — the user picks, "
+                "they don't type.")
+        proposal = p.propose_split()
+        if proposal is not None:
+            layers["split_proposal"] = proposal
+        # Back-compat keys (pre-two-layer consumers read these).
+        layers["path"] = layers["workspace"]["path"]
+        layers["exists"] = (layers["workspace"]["exists"]
+                            or layers["global"]["exists"])
+        merged = []
+        if layers["global"]["content"]:
+            merged.append(layers["global"]["content"])
+        if layers["workspace"]["content"]:
+            merged.append(layers["workspace"]["content"])
+        layers["content"] = "\n\n".join(merged) or None
+        return layers
+
+    @mcp.tool()
+    def persona_split(to_global: list[str]) -> dict:
+        """Apply a persona split: move the named `## ` sections from the
+        workspace persona.md into the global one (~/.openpod/persona.md).
+        Call ONLY after the user confirmed the selection from the
+        split_proposal via multiple choice — never on your own judgment.
+        Machine-owned sections are refused."""
+        from .persona import Persona
+
+        return Persona(_workspace()).apply_split(to_global)
 
     @mcp.tool()
     def persona_scan(extra_roots: Optional[list[str]] = None) -> dict:

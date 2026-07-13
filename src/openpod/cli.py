@@ -102,7 +102,8 @@ def _cmd_catch(args) -> int:
         asr=asr,
         progress=lambda msg: print(f"… {msg}", file=sys.stderr),
     )
-    next_step = None if Persona(ws).exists() else (
+    _p = Persona(ws)
+    next_step = None if (_p.exists() or _p.global_exists()) else (
         "this briefing is generic — ask your agent to \"Set Up My Persona\" "
         "(or run `openpod persona init`) and the next one is written for you"
     )
@@ -426,7 +427,10 @@ def _cmd_persona(args) -> int:
 
     persona = Persona(_ws(args))
     if args.action == "init":
-        p = persona.init(force=args.force)
+        if getattr(args, "global_layer", False):
+            p = persona.init_global(force=args.force)
+        else:
+            p = persona.init(force=args.force)
         print(f"persona at: {theme.path(str(p))}")
     elif args.action == "interview":
         for i, q in enumerate(persona.interview(), 1):
@@ -443,13 +447,34 @@ def _cmd_persona(args) -> int:
         print(f"\nwrote: {theme.path(str(persona.path))} (Derived block only — your sections untouched)")
     elif args.action == "show":
         if getattr(args, "json", False):
-            print(json.dumps({
-                "path": str(persona.path),
-                "exists": persona.exists(),
-                "content": persona.read(),
-            }, indent=2, ensure_ascii=False))
+            print(json.dumps(persona.read_layers(), indent=2, ensure_ascii=False))
             return 0
-        print(persona.read() or "(no persona yet — run `openpod persona init`)")
+        if getattr(args, "global_layer", False):
+            print(persona.read_global()
+                  or "(no global persona yet — run `openpod persona init --global`)")
+            return 0
+        layers = persona.read_layers()
+        shown = False
+        for name in ("global", "workspace"):
+            if layers[name]["content"]:
+                print(f"═══ {name} · {layers[name]['path']} ═══\n")
+                print(layers[name]["content"])
+                shown = True
+        if not shown:
+            print("(no persona yet — run `openpod persona init`)")
+    elif args.action == "split":
+        if args.to_global:
+            result = persona.apply_split(args.to_global)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0
+        proposal = persona.propose_split()
+        if proposal is None:
+            print("nothing to split (no workspace persona, or the global "
+                  "layer already exists)")
+            return 0
+        print(json.dumps(proposal, indent=2, ensure_ascii=False))
+        print("\napply with: openpod persona split --to-global "
+              "\"Role\" \"Language & style\" …", file=sys.stderr)
     return 0
 
 
@@ -781,8 +806,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     pe = sub.add_parser("persona", help="manage the local persona.md")
     pe.add_argument("action",
-                    choices=["init", "interview", "scan", "derive", "show"],
+                    choices=["init", "interview", "scan", "derive", "show",
+                             "split"],
                     nargs="?", default="show")
+    pe.add_argument("--global", dest="global_layer", action="store_true",
+                    help="operate on the global layer (~/.openpod/persona.md)")
+    pe.add_argument("--to-global", nargs="*", metavar="SECTION",
+                    help="split: move these sections to the global persona "
+                         "(omit to print the proposal)")
     pe.add_argument("--force", action="store_true")
     pe.add_argument("--json", action="store_true")
     pe.add_argument("--roots", nargs="*",

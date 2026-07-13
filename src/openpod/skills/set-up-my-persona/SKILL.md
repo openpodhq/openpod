@@ -1,9 +1,9 @@
 ---
 name: Set Up My Persona
 description: Learn who I am — guess from the workspace, let the user confirm, seed the persona.md that personalizes everything.
-version: "2"
-primitives: [persona, persona_scan]
-artifacts: [persona.md]
+version: "3"
+primitives: [persona, persona_scan, persona_split]
+artifacts: [persona.md, ~/.openpod/persona.md]
 ---
 
 # Set Up My Persona
@@ -49,16 +49,32 @@ elaboration. Rules:
   sources are the discovery pool, not noise. The digest deliberately
   surfaces interest-matching episodes from shows they've never sampled.
 
-## Step 2 — write and derive
+## Step 2 — write to the right layer, then derive
 
-1. Write the confirmed answers into the human sections of `persona.md`
-   (Role, Current projects, Interests (amplify) — with the chosen angles,
-   Not interested (filter), What I want from long-form) — in the user's own
-   words where they elaborated, in the confirmed option text where they
-   picked. Never write a guess the user didn't confirm.
-2. Run `openpod persona derive` to refresh the machine-owned Derived block.
-3. Report the path to `persona.md` and remind them it's theirs: hand-edit any
-   time; it never leaves their disk.
+The persona is **two files**: global (`~/.openpod/persona.md` — who the
+user is everywhere) and workspace (`.openpod/persona.md` — what this
+folder is for). Route each confirmed answer by kind:
+
+- **Global**: Role, Language & style (preferred language belongs here *and*
+  in `locale.preferred_language`), Standing interests/filters, What I want
+  from long-form. `openpod persona init --global` is idempotent.
+- **Workspace**: Current projects, Interests (amplify) with the chosen
+  angles, Not interested (filter). `openpod persona init` is idempotent.
+
+Write in the user's own words where they elaborated, in the confirmed
+option text where they picked. Never write a guess the user didn't
+confirm. Then run `openpod persona derive` (workspace-local by nature) and
+report both paths — theirs to hand-edit, never uploaded.
+
+## Splitting an older single-file persona
+
+If `persona()` returns a `split_proposal`, this workspace's persona
+predates the global layer. Offer the split as **one multiple-choice
+confirmation**: list the `proposed_global` sections (pre-checked) and any
+`unclassified` ones (unchecked), let the user toggle and confirm, then
+call `persona_split(to_global=[...])` with exactly their selection. Zero
+prose required from the user; never split without the confirmation; never
+offer machine-owned sections.
 
 ## Boundary (hard contract)
 
