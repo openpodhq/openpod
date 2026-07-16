@@ -3,9 +3,7 @@
 All notable changes to OpenPod are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
-## [0.1.0] — 2026-07-16
-
-First Stage 1 alpha: local-pure, pull-only.
+## [Unreleased]
 
 ### Added
 - **First-use clip setup + social framing.** The first clip in a workspace
@@ -23,6 +21,30 @@ First Stage 1 alpha: local-pure, pull-only.
   check-the-frames note instead of blocking. `--aspect` on the CLI,
   `aspect` on MCP clip. Also fixed: a video file passed via `audio_path`
   now counts as video.
+
+### Fixed
+- **No more crash on a stdout that can't encode the brand glyphs.**
+  `openpod search` (and any other command) printed nothing and exited 1 on
+  a cp1252 or ascii stdout — a Windows redirect, a POSIX/C locale in CI.
+  One codec error handler now degrades the glyphs 1:1 to ASCII (the banner
+  box stays aligned) and only rewires streams that genuinely can't carry
+  them; UTF-8 terminals are untouched.
+- **Local-file catches have an identity.** Every file-kind catch used to
+  slug to `file/episode` — no title, no path recorded — so a second local
+  file silently replaced the first, and `clip` demanded `audio_path=` for
+  media sitting exactly where the user said it was. The resolved path and
+  filename are now recorded (media is used in place — never copied, never
+  fetched), and the library refuses to merge provably different sources:
+  the newcomer gets a numbered sibling (`file/interview-2`). Re-catches of
+  the same source still regenerate in place.
+- **`openpod-mcp` without the `mcp` extra** prints the install hint alone
+  on stderr and exits 1, instead of burying it under a chained traceback.
+
+## [0.1.0] — 2026-07-16
+
+First Stage 1 alpha: local-pure, pull-only.
+
+### Added
 - **Two-layer persona: who you are vs. what this folder is for.** Global
   (`~/.openpod/persona.md`): role, language & style, standing
   interests/filters, what you want from long-form — true in every
