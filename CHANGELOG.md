@@ -3,7 +3,7 @@
 All notable changes to OpenPod are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-07-16
 
 First Stage 1 alpha: local-pure, pull-only.
 
