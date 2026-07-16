@@ -40,4 +40,4 @@ extras and must be imported lazily so the core installs and tests without them.
 ## License
 
 By contributing you agree your contributions are licensed under
-**AGPL-3.0-or-later**, the project's license.
+**MIT**, the project's license.
