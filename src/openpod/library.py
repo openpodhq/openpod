@@ -244,11 +244,26 @@ class Library:
                             slugify(episode, fallback="episode"))
 
     def entry_for(self, source: SourceRef) -> LibraryEntry:
-        """Choose a stable directory for a source."""
+        """Choose a stable directory for a source.
+
+        Stable means two things at once: re-catching the *same* source lands
+        in the same directory (briefings regenerate in place), while a
+        *different* source that happens to slug identically — two local files
+        named ``interview.mp3``, two episodes of a show with the same title —
+        gets a numbered sibling instead of silently replacing what's there.
+        """
         show = source.show or source.kind
         episode = source.title or source.guid or source.video_id \
             or source.episode_id or source.url or "episode"
-        return self.entry(show, episode)
+        entry = self.entry(show, episode)
+        base = entry.episode_slug
+        n = 2
+        while entry.exists() and _source_conflicts(
+                entry.read_meta().get("source", {}), source):
+            entry = LibraryEntry(self.workspace, entry.show_slug,
+                                 f"{base}-{n}")
+            n += 1
+        return entry
 
     def get(self, entry_id: str) -> Optional[LibraryEntry]:
         if "/" not in entry_id:
@@ -271,6 +286,18 @@ class Library:
 
     def __len__(self) -> int:
         return sum(1 for _ in self)
+
+
+def _source_conflicts(stored: dict, source: SourceRef) -> bool:
+    """True when the stored source and the new one carry the *same* identity
+    field with *different* values — proof they are different episodes. A field
+    absent on either side proves nothing: a re-catch that learned more (or
+    less) about the same episode must keep its directory."""
+    for key in ("guid", "video_id", "episode_id", "audio_url", "url"):
+        a, b = stored.get(key), getattr(source, key)
+        if a and b and a != b:
+            return True
+    return False
 
 
 def _now() -> str:

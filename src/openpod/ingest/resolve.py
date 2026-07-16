@@ -94,11 +94,35 @@ def origin_ref(link: str, kind: Optional[str] = None) -> SourceRef:
     transcript source so output links can always render on the user's
     platform (origin/source decoupling)."""
     kind = kind or detect_kind(link)
-    src = SourceRef(kind=kind, url=link if kind != "file" else None)
+    if kind == "file":
+        return _file_ref(link)
+    src = SourceRef(kind=kind, url=link)
     if kind == "youtube":
         src.video_id = youtube_video_id(link)
     elif kind == "spotify":
         src.episode_id = spotify_episode_id(link)
+    return src
+
+
+_TRANSCRIPT_EXTS = (".vtt", ".srt", ".json3", ".json")
+
+
+def _file_ref(link: str) -> SourceRef:
+    """A SourceRef for a local file, carrying the resolved path.
+
+    The path is the file's only identity: without it, every local catch slugs
+    to the same library directory and silently replaces the previous one, and
+    ``clip`` can't find media that is sitting right where the user said it is.
+    A media path goes in ``audio_url`` so :func:`openpod.media.get_media`
+    can cut from it in place (never copied, never uploaded)."""
+    p = Path(link).expanduser()
+    try:
+        resolved = str(p.resolve())
+    except OSError:
+        resolved = str(p)
+    src = SourceRef(kind="file", title=p.stem or None, url=resolved)
+    if p.suffix.lower() not in _TRANSCRIPT_EXTS:
+        src.audio_url = resolved
     return src
 
 
@@ -242,9 +266,9 @@ def _ingest_file(link: str) -> tuple[SourceRef, Transcript]:
     from .. import transcript as tx
 
     p = Path(link).expanduser()
-    src = SourceRef(kind="file", title=p.stem, audio_url=None)
+    src = _file_ref(link)
     # If it's a transcript, parse it; otherwise it's media needing ASR.
-    if p.suffix.lower() in (".vtt", ".srt", ".json3", ".json"):
+    if p.suffix.lower() in _TRANSCRIPT_EXTS:
         return src, tx.load_file(p)
     from ..asr import transcribe
     return src, transcribe(str(p))

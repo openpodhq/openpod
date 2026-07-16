@@ -80,6 +80,18 @@ def get_media(entry_id: str, source: Optional[SourceRef], *,
     if not url:
         raise ValueError("no media source for this episode; pass audio_path=")
 
+    # File-kind catches record a local path, not a URL: use the media where
+    # it lives — never copied into the cache, never fetched.
+    if "://" not in url:
+        p = Path(url)
+        if p.exists():
+            return Media(path=p, has_video=p.suffix.lower() in _VIDEO_EXTS,
+                         cached=False)
+        raise ValueError(
+            f"media file no longer at {url} (moved since catch?); "
+            "pass audio_path="
+        )
+
     cache.mkdir(parents=True, exist_ok=True)
     if want_video:
         path = _download_video(url, cache)
