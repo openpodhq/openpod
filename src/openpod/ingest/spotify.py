@@ -27,7 +27,7 @@ from ..errors import UnresolvedLinkError
 from ..models import EpisodeIdentity, SourceRef, Transcript
 from .rss import Feed, FeedItem, load_feed
 
-_UA = {"User-Agent": "OpenPod/0.1 (+https://github.com/openpod/openpod)"}
+_UA = {"User-Agent": "OpenPod/0.1 (+https://github.com/openpodhq/openpod)"}
 
 
 def _get_json(url: str) -> dict:

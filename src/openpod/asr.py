@@ -18,7 +18,7 @@ from typing import Optional
 
 from .models import Cue, Transcript
 
-_UA = {"User-Agent": "OpenPod/0.1 (+https://github.com/openpod/openpod)"}
+_UA = {"User-Agent": "OpenPod/0.1 (+https://github.com/openpodhq/openpod)"}
 
 
 class DependencyMissing(RuntimeError):

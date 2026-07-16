@@ -16,7 +16,7 @@ from xml.etree import ElementTree as ET
 from ..models import SourceRef, Transcript
 
 PODCAST_NS = "https://podcastindex.org/namespace/1.0"
-_UA = {"User-Agent": "OpenPod/0.1 (+https://github.com/openpod/openpod)"}
+_UA = {"User-Agent": "OpenPod/0.1 (+https://github.com/openpodhq/openpod)"}
 
 # Timed transcript mime types, in preference order.
 _TIMED_TYPES = ("application/json", "text/vtt", "application/x-subrip", "application/srt")

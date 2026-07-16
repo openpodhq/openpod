@@ -24,7 +24,7 @@ from .models import Idea, SourceRef, Transcript, format_timestamp
 # Design D7: one small attribution line at the foot of generated
 # briefing.md / ideas.md — never above user content. ?ref=briefing is a
 # measurement channel (Marketing Plan §7); don't drop it.
-_ATTRIBUTION = "— cited with [OpenPod](https://github.com/openpod/openpod?ref=briefing)"
+_ATTRIBUTION = "— cited with [OpenPod](https://github.com/openpodhq/openpod?ref=briefing)"
 
 # A compact English stopword set — enough to stop function words dominating TF.
 _STOP = set(

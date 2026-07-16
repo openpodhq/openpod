@@ -26,7 +26,7 @@ _TEMPLATE = (Path(__file__).parent / "brand" / "card-template.html").read_text(e
 _TOKEN_RE = re.compile(r"\{\{(\w+)\}\}")
 
 # The k-proxy for kill-question R2 (Marketing Plan) — non-negotiable.
-BACKLINK = "https://github.com/openpod/openpod?ref=card"
+BACKLINK = "https://github.com/openpodhq/openpod?ref=card"
 
 
 def _fill(template: str, **values: str) -> str:

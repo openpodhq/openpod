@@ -57,8 +57,8 @@ all = [
 dev = ["pytest>=8.0"]
 
 [project.urls]
-Homepage = "https://github.com/DoriYoav/openpod"
-Repository = "https://github.com/DoriYoav/openpod"
+Homepage = "https://github.com/openpodhq/openpod"
+Repository = "https://github.com/openpodhq/openpod"
 
 [project.scripts]
 openpod = "openpod.cli:main"

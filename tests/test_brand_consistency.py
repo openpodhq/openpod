@@ -145,7 +145,7 @@ def test_briefing_and_ideas_citations_carry_the_signature_glyph(workspace, vtt_f
     assert briefing.count("▸") >= len(result.toc)     # briefing.md cites the TOC
     assert ideas.count("▸") >= len(result.ideas)       # ideas.md cites the ideas
 
-    attribution = "— cited with [OpenPod](https://github.com/openpod/openpod?ref=briefing)"
+    attribution = "— cited with [OpenPod](https://github.com/openpodhq/openpod?ref=briefing)"
     assert attribution in briefing
     assert attribution in ideas
 

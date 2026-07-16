@@ -16,7 +16,7 @@ from typing import Optional
 
 from ..errors import UnsupportedFormatError
 
-_UA = {"User-Agent": "OpenPod/0.1 (+https://github.com/openpod/openpod)"}
+_UA = {"User-Agent": "OpenPod/0.1 (+https://github.com/openpodhq/openpod)"}
 
 # The deliberate support matrix.
 AUDIO_MIME = {

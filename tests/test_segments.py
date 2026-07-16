@@ -264,7 +264,7 @@ def test_ideas_markdown_renders_labeled_ladder():
     assert "chapter “The 10x Paradox” [▸ 10:38](https://x/?t=638s)" in md
     assert "said [▸ 12:01](https://x/?t=721s)" in md
     assert "_Links:" in md                             # the one-line legend
-    assert "— cited with [OpenPod](https://github.com/openpod/openpod?ref=briefing)" in md
+    assert "— cited with [OpenPod](https://github.com/openpodhq/openpod?ref=briefing)" in md
 
 
 def test_search_hits_carry_chapter_layer(workspace, vtt_file):

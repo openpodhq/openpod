@@ -13,7 +13,7 @@
 
 **Pull the ten minutes that matter — to you.**
 
-[![PyPI](https://img.shields.io/pypi/v/openpod)](https://pypi.org/project/openpod/) [![Python](https://img.shields.io/pypi/pyversions/openpod)](https://pypi.org/project/openpod/) [![CI](https://github.com/DoriYoav/openpod/actions/workflows/ci.yml/badge.svg)](https://github.com/DoriYoav/openpod/actions) [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE) [![Telemetry](https://img.shields.io/badge/telemetry-0-black)](#nothing-leaves-your-machine) [![MCP](https://img.shields.io/badge/MCP-server-black)](https://modelcontextprotocol.io)
+[![PyPI](https://img.shields.io/pypi/v/openpod)](https://pypi.org/project/openpod/) [![Python](https://img.shields.io/pypi/pyversions/openpod)](https://pypi.org/project/openpod/) [![CI](https://github.com/openpodhq/openpod/actions/workflows/ci.yml/badge.svg)](https://github.com/openpodhq/openpod/actions) [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE) [![Telemetry](https://img.shields.io/badge/telemetry-0-black)](#nothing-leaves-your-machine) [![MCP](https://img.shields.io/badge/MCP-server-black)](https://modelcontextprotocol.io)
 
 Hundreds of hours pile up across the shows you follow. OpenPod pulls out the minutes you're chasing — cited, timestamped to verify, extracted on your own machine — as the starting point your AI agent works from.
 
@@ -177,7 +177,7 @@ Built by Yoav — building OpenPod in public.
 ## Development
 
 ```bash
-git clone https://github.com/DoriYoav/openpod
+git clone https://github.com/openpodhq/openpod
 cd openpod
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'
