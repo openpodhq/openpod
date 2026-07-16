@@ -18,6 +18,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      # The clip tests drive real encoding, so ffmpeg has to be present or they
+      # fail rather than skip. Not preinstalled on the runner.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install (core + dev only — tests run offline)
         run: |
           python -m pip install --upgrade pip
