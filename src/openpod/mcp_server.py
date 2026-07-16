@@ -577,7 +577,16 @@ def build_server():
 
 
 def main() -> None:
-    build_server().run()
+    try:
+        server = build_server()
+    except RuntimeError as e:
+        # A missing optional extra is an instruction, not a crash: show the
+        # install hint on its own, never buried under a traceback.
+        import sys
+
+        print(e, file=sys.stderr)
+        raise SystemExit(1)
+    server.run()
 
 
 if __name__ == "__main__":  # pragma: no cover
