@@ -12,6 +12,20 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_SRC = REPO_ROOT / "src" / "openpod"
 
+# The single canonical brand headline. If the decision changes, change it HERE
+# (and in brand-tokens.json, which this test pins to it) — never by hand-editing
+# individual surfaces. This assertion is the guard that would have caught the
+# five-vs-ten headline drift.
+CANONICAL_TAGLINE = "Pull the ten minutes that matter — to you."
+
+# Retired headlines/outcome lines: must never reappear in shipped copy. The
+# product outcome is "ten minutes" everywhere now, so any stray "five minutes"
+# outcome line is drift.
+SUPERSEDED_HEADLINES = (
+    "five minutes that matter",
+    "five minutes, not the three hours",
+)
+
 PALETTE_HEX = (
     "#0E0E0E", "#0e0e0e",  # ink
     "#FCFCFB", "#fcfcfb",  # paper
@@ -78,6 +92,37 @@ def test_readme_has_no_forbidden_vocabulary():
 def test_cli_strings_have_no_forbidden_vocabulary():
     hits = [hit for path in PACKAGE_SRC.rglob("*.py") for hit in _forbidden_vocab_hits(path)]
     assert not hits, f"forbidden vocabulary in src/: {hits}"
+
+
+def test_brand_tokens_tagline_is_canonical():
+    import json
+
+    tokens = json.loads(
+        (PACKAGE_SRC / "brand" / "brand-tokens.json").read_text(encoding="utf-8")
+    )
+    assert tokens.get("tagline") == CANONICAL_TAGLINE, (
+        "brand-tokens.json tagline drifted from the canonical headline: "
+        f"{tokens.get('tagline')!r} != {CANONICAL_TAGLINE!r}"
+    )
+
+
+def test_no_superseded_headline_in_shipped_copy():
+    surfaces = [REPO_ROOT / "README.md"]
+    surfaces += list(PACKAGE_SRC.rglob("*.py"))
+    surfaces += [p for p in (PACKAGE_SRC / "brand").glob("*") if p.is_file()]
+    offenders = []
+    for path in surfaces:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, IsADirectoryError):
+            continue
+        for retired in SUPERSEDED_HEADLINES:
+            if retired.lower() in text.lower():
+                offenders.append(f"{path}: {retired!r}")
+    assert not offenders, (
+        "a retired headline is still present in shipped copy (update it to the "
+        f"canonical line):\n" + "\n".join(offenders)
+    )
 
 
 def test_readme_has_exactly_one_pip_install_openpod_above_the_fold():

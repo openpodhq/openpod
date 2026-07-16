@@ -13,9 +13,11 @@
 
 **Pull the ten minutes that matter — to you.**
 
-[![PyPI](https://img.shields.io/pypi/v/openpod)](https://pypi.org/project/openpod/) [![Python](https://img.shields.io/pypi/pyversions/openpod)](https://pypi.org/project/openpod/) [![CI](https://github.com/openpod/openpod/actions/workflows/ci.yml/badge.svg)](https://github.com/openpod/openpod/actions) [![License](https://img.shields.io/badge/license-AGPL--3.0-black)](LICENSE) [![Telemetry](https://img.shields.io/badge/telemetry-0-black)](#nothing-leaves-your-machine) [![MCP](https://img.shields.io/badge/MCP-server-black)](https://modelcontextprotocol.io)
+[![PyPI](https://img.shields.io/pypi/v/openpod)](https://pypi.org/project/openpod/) [![Python](https://img.shields.io/pypi/pyversions/openpod)](https://pypi.org/project/openpod/) [![CI](https://github.com/DoriYoav/openpod/actions/workflows/ci.yml/badge.svg)](https://github.com/DoriYoav/openpod/actions) [![License](https://img.shields.io/badge/license-MIT-black)](LICENSE) [![Telemetry](https://img.shields.io/badge/telemetry-0-black)](#nothing-leaves-your-machine) [![MCP](https://img.shields.io/badge/MCP-server-black)](https://modelcontextprotocol.io)
 
 Hundreds of hours pile up across the shows you follow. OpenPod pulls out the minutes you're chasing — cited, timestamped to verify, extracted on your own machine — as the starting point your AI agent works from.
+
+OpenPod is a local-first agent toolkit — primitives plus packaged skills — that your agent drives over MCP or the CLI. It connects to nothing external; the only corpus is your library on disk.
 
 ```bash
 pip install openpod
@@ -42,7 +44,7 @@ Point OpenPod (or your agent) at an RSS feed or a YouTube link. In return:
 
 - **A briefing you can verify.** Every claim carries a timestamp and a deep link. Don't trust the summary? Click and hear the source in the native player. OpenPod never re-hosts anyone's audio — it navigates you to the moment.
 - **A library that compounds.** Everything you catch lands in `.openpod/` as plain files — transcripts, briefings, ideas, notes, clips. Searchable across everything you've ever caught, keyword and semantic, all local.
-- **The five minutes, not the three hours.**
+- **Personalized by your own agent.** OpenPod reads your local `persona.md`, so your AI foregrounds the decisions, tools, and numbers *you* care about and drops the rest — the same episode briefs differently for you than for the next person, and no cloud model ever sees who you are.
 
 ## Nothing leaves your machine
 
@@ -50,7 +52,7 @@ There is no OpenPod server, no account, no telemetry — there is nothing to opt
 
 ## Your agent can drive all of it
 
-OpenPod ships an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Cowork, Codex — any MCP client — can catch, search, clip, and brief by name:
+OpenPod's toolkit is exposed as an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Cowork, Codex — any MCP client — can catch, search, clip, and brief by name:
 
 ```bash
 openpod-mcp
@@ -164,8 +166,8 @@ None. There is no endpoint to send it to.
 **How is transcription chosen?**
 Publisher-provided timed transcripts and captions first — free, fast, good for navigation (±2–4s cue timing). Otherwise local Whisper (`asr` extra). Nothing is uploaded either way. `clip` snaps cuts to cue boundaries so clips land on sentences.
 
-**Why AGPL?**
-[AGPL-3.0-or-later](LICENSE): if someone runs a modified OpenPod as a network service, they must offer users their source. The engine stays open; nobody resells it closed.
+**Why MIT?**
+[MIT](LICENSE): maximally permissive and frictionless — install it at work without tripping a license policy, embed it, build on it, no obligations. OpenPod isn't protected by its license; it's protected by being local-pure and simple. No copyleft, no lock-in.
 
 **Can I hack on it without heavy models or network?**
 Yes — the test suite runs fully offline against fixtures.
@@ -175,7 +177,7 @@ Built by Yoav — building OpenPod in public.
 ## Development
 
 ```bash
-git clone https://github.com/openpod/openpod
+git clone https://github.com/DoriYoav/openpod
 cd openpod
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'

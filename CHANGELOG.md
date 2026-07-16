@@ -199,4 +199,4 @@ First Stage 1 alpha: local-pure, pull-only.
   without a labeled alternative. Beats persist in `meta.json`; hits carry
   `chapter_*`, `segment_*`, and `deeplink` fields; `ideas.md` renders the
   ladder with a one-line legend.
-- AGPL-3.0-or-later license; offline test suite; CI across Python 3.10–3.13.
+- MIT license; offline test suite; CI across Python 3.10–3.13.
