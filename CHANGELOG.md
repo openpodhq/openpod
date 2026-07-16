@@ -8,6 +8,21 @@ All notable changes to OpenPod are documented here. Format loosely follows
 First Stage 1 alpha: local-pure, pull-only.
 
 ### Added
+- **First-use clip setup + social framing.** The first clip in a workspace
+  returns a `first_use` block: the product's own multiple-choice questions
+  (captions burned/soft/off — burned listed first, it's what social feeds
+  expect; export shape; caption color; working folder), asked once in one
+  message, saved via settings, then `clip.setup_done` — never asked twice,
+  skipping keeps defaults. New `clip.aspect` presets crop the **export
+  derivative only** (vertical 9:16 TikTok/Reels/Shorts, square 1:1, wide
+  16:9 — the library master always keeps source dimensions), and
+  `clip.caption_style` (font/color/outline/boxed/position) styles burned
+  captions via libass force_style — a subtle branded default, never a
+  watermark. Burn-gate refinement: a *proven* language mismatch still
+  refuses to burn; an unlabeled caption language burns with a
+  check-the-frames note instead of blocking. `--aspect` on the CLI,
+  `aspect` on MCP clip. Also fixed: a video file passed via `audio_path`
+  now counts as video.
 - **Two-layer persona: who you are vs. what this folder is for.** Global
   (`~/.openpod/persona.md`): role, language & style, standing
   interests/filters, what you want from long-form — true in every

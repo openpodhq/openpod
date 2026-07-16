@@ -113,6 +113,7 @@ def build_server():
              lang: Optional[str] = None, captions_file: Optional[str] = None,
              word_level: bool = False, label: Optional[bool] = None,
              label_text: Optional[str] = None, hook: Optional[str] = None,
+             aspect: Optional[str] = None,
              out_dir: Optional[str] = None) -> dict:
         """Cut a local, user-owned clip from a caught episode (snapping to
         sentence boundaries) and generate a shareable deep-link card. Requires
@@ -131,14 +132,26 @@ def build_server():
 
         Video is preserved by default when the source has it (video=None);
         video=false forces audio-only. Check `has_video` and surface
-        `capability_note` to the user BEFORE delivering."""
+        `capability_note` to the user BEFORE delivering.
+
+        `aspect` shapes the EXPORT derivative only (vertical 9:16 for
+        TikTok/Reels/Shorts, square 1:1, wide 16:9); the master keeps source
+        dimensions. Caption styling comes from clip.caption_style settings.
+
+        FIRST USE: when the result carries `first_use`, this workspace has
+        never configured clipping — ask the user its questions ONCE, in one
+        message, as multiple choice (never a form, never prose), save each
+        answer via the settings tool, and set clip.setup_done=true. If the
+        user skips, still set setup_done=true — never ask twice. Until it's
+        answered, don't silently pick presentation defaults like hidden
+        sidecar captions when the user asked for a social clip."""
         from .clip import clip as _clip
 
         r = _clip(entry_id, start, end, workspace=_workspace(), snap=snap,
                   video=video, captions=captions, lang=lang,
                   captions_file=captions_file, word_level=word_level,
                   label=label, label_text=label_text, hook=hook,
-                  out_dir=out_dir)
+                  aspect=aspect, out_dir=out_dir)
         return {
             "path": str(r.path),
             "start": r.start,
@@ -150,6 +163,8 @@ def build_server():
             "captions_path": str(r.captions_path) if r.captions_path else None,
             "captions": r.captions,
             "label": r.label,
+            "aspect": r.aspect,
+            "first_use": r.first_use,
             "export_dir": str(r.export_dir) if r.export_dir else None,
             "export_paths": [str(p) for p in r.export_paths],
             "card_path": str(r.card_path) if r.card_path else None,

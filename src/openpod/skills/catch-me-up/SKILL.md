@@ -23,7 +23,7 @@ The user hands you a link to a long-form episode ("catch me up on this",
    - Foreground what the persona says to **amplify**; compress or drop what it
      says to **filter**.
    - Frame around "What I want from long-form" (decisions, named tools,
-     numbers, the five minutes that change their mind).
+     numbers, the minutes that change their mind).
    - **Every claim carries a deep-link** to the source moment. A sentence that
      isn't one click from the moment that justifies it isn't done.
    - **Cite with the anchor ladder.** Ideas carry up to three labeled

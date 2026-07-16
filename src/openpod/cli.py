@@ -20,6 +20,7 @@ from .models import format_timestamp
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    theme.enable_safe_output()
     parser = _build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
@@ -194,7 +195,8 @@ def _cmd_clip(args) -> int:
                   captions_file=args.captions_file,
                   word_level=args.word_level,
                   label=True if (args.label_from_meta or args.label) else None,
-                  label_text=args.label, hook=args.hook, out_dir=args.out)
+                  label_text=args.label, hook=args.hook,
+                  aspect=args.aspect, out_dir=args.out)
     if args.json:
         print(json.dumps({
             "path": str(result.path),
@@ -207,10 +209,12 @@ def _cmd_clip(args) -> int:
             "captions_path": str(result.captions_path) if result.captions_path else None,
             "captions": result.captions,
             "label": result.label,
+            "aspect": result.aspect,
             "export_dir": str(result.export_dir) if result.export_dir else None,
             "export_paths": [str(p) for p in result.export_paths],
             "card_path": str(result.card_path) if result.card_path else None,
             "card_png_path": str(result.card_png_path) if result.card_png_path else None,
+            "first_use": result.first_use,
         }, indent=2, ensure_ascii=False))
         return 0
     print(f"clip: {theme.path(str(result.path))}")
@@ -226,6 +230,11 @@ def _cmd_clip(args) -> int:
               f"({len(result.export_paths)} files)")
     if result.capability_note:
         print(f"  note: {result.capability_note}")
+    if result.first_use:
+        print("  first clip here — set your defaults once "
+              "(captions burn/soft/off, shape, color, export folder):\n"
+              "    openpod settings clip.captions burn   # etc., then\n"
+              "    openpod settings clip.setup_done true")
     if result.card_path:
         print(f"  share card: {theme.path(str(result.card_path))}")
         if result.card_png_path:
@@ -713,6 +722,12 @@ def _build_parser() -> argparse.ArgumentParser:
     cl.add_argument("--hook", help="one-line hook stored in the export "
                                    "package (label.json); rendered by "
                                    "downstream tools, not burned here")
+    cl.add_argument("--aspect",
+                    choices=["original", "vertical", "square", "wide"],
+                    help="export derivative shape: vertical 9:16 (TikTok/"
+                         "Reels/Shorts), square 1:1, wide 16:9; the library "
+                         "master always keeps source dimensions "
+                         "(default: clip.aspect setting)")
     cl.add_argument("--out", help="working folder: copy master + sidecars there "
                                   "(burn derivatives land only there); "
                                   "default: clip.export_dir setting")

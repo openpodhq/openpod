@@ -38,10 +38,25 @@ DEFAULT_SETTINGS: dict = {
         "caption_language": "preferred",  # preferred | source | explicit code
         "burn_in": False,               # hard subs only on export derivatives
         "style": "karaoke",             # caption chunking/render style
+        # Export derivative aspect: original | vertical (9:16 — TikTok/Reels/
+        # Shorts) | square (1:1 — feed posts) | wide (16:9 — YouTube/X).
+        # The library master ALWAYS keeps source dimensions.
+        "aspect": "original",
+        # Burned-caption styling — a subtle branded default, never a watermark.
+        "caption_style": {
+            "font": None,               # None = renderer default; else a face name
+            "color": "#FFFFFF",        # caption text color (hex)
+            "outline": "#000000",      # outline/box color
+            "boxed": True,              # semi-opaque box behind text
+            "position": "bottom",      # bottom | top
+        },
         "label": False,                 # speaker name plate on export
         "label_template": "{name}, {title}",
         "export_dir": None,             # working folder for derivatives/copies
         "keep_clean_master": True,      # the library cut is never mutated
+        # First-use setup: until true, clip results carry a multiple-choice
+        # `first_use` block so the interface asks ONCE and saves the answers.
+        "setup_done": False,
     },
 }
 

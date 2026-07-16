@@ -110,6 +110,9 @@ def test_no_superseded_headline_in_shipped_copy():
     surfaces = [REPO_ROOT / "README.md"]
     surfaces += list(PACKAGE_SRC.rglob("*.py"))
     surfaces += [p for p in (PACKAGE_SRC / "brand").glob("*") if p.is_file()]
+    # The wheel packages all of src/openpod, so every SKILL.md ships and is read
+    # by users and agents alike — it's shipped copy, not docs.
+    surfaces += list(PACKAGE_SRC.rglob("*.md"))
     offenders = []
     for path in surfaces:
         try:

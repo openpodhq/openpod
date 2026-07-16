@@ -18,15 +18,24 @@ to downstream tools.
 1. Call `doctor` once: can this machine burn text at all (libass/drawtext)?
    If not, the deliverable is soft captions + sidecars — say so up front.
 2. Read `settings`: `locale.preferred_language`, `clip.export_dir`,
-   `clip.label_template`. If `export_dir` is unset, ask the user for their
-   working folder once and save it via `settings` — never default to the
-   library.
+   `clip.aspect`, `clip.caption_style`, `clip.label_template`. If
+   `export_dir` is unset, ask the user for their working folder once and
+   save it via `settings` — never default to the library.
+3. **First use**: if a clip result carries `first_use`, this workspace has
+   never set its clip defaults. Ask its questions ONCE — one message, pure
+   multiple choice (captions burned/soft/off, shape per platform, caption
+   color, export folder) — save the answers via `settings`, set
+   `clip.setup_done=true`, and never ask again. A user posting to social
+   almost always wants **burned** captions and a platform shape; don't
+   silently hand them a sidecar they can't see.
 
 ## The pipeline (captions are data before they are pixels)
 
-1. **Cut or reuse the master.** `clip(entry, start, end, captions="soft",
-   out_dir=…)` — the library keeps the clean cut; the working folder gets
-   copies plus `deeplink.txt`. The clip's `.json` now carries a structured
+1. **Cut or reuse the master.** `clip(entry, start, end, captions=…,
+   aspect=…, out_dir=…)` — the library keeps the clean cut at source
+   dimensions; the working folder gets copies plus `deeplink.txt`, and the
+   social derivative is cropped to `aspect` (vertical/square/wide) with
+   captions styled per `clip.caption_style`. The clip's `.json` now carries a structured
    caption track: phrases with `break` semantics (`sentence` / `length` /
    `force`), language, `rtl`, and honest `timing` ("approximate" for rolling
    platform cues).

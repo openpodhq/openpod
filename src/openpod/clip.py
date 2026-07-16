@@ -42,6 +42,10 @@ class ClipResult:
     label: Optional[str] = None            # the label text used, if any
     export_dir: Optional[Path] = None      # working-folder copies landed here
     export_paths: list = None              # everything copied/rendered there
+    aspect: str = "original"               # aspect of the export derivative
+    # Until clip.setup_done, this carries the one-time multiple-choice
+    # setup questions the interface should ask (then save via settings).
+    first_use: Optional[dict] = None
 
     def __post_init__(self) -> None:
         if self.export_paths is None:
@@ -124,7 +128,7 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
          captions: Optional[str] = None, lang: Optional[str] = None,
          captions_file: Optional[str] = None, word_level: bool = False,
          label: Optional[bool] = None, label_text: Optional[str] = None,
-         hook: Optional[str] = None,
+         hook: Optional[str] = None, aspect: Optional[str] = None,
          out_dir: Optional[str] = None) -> ClipResult:
     """Cut a clip. ``video=None`` (default) preserves video whenever the
     source has it; ``video=False`` forces audio-only; ``video=True`` demands
@@ -211,16 +215,84 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
     _apply_presentation(result, entry, ws, captions_mode=captions, lang=lang,
                         captions_file=captions_file, word_level=word_level,
                         label_flag=label, label_text=label_text, hook=hook,
-                        out_dir=out_dir, source=source, meta_path=meta_path,
-                        transcript=transcript)
+                        aspect=aspect, out_dir=out_dir, source=source,
+                        meta_path=meta_path, transcript=transcript)
+    if not ws.effective_settings()["clip"]["setup_done"]:
+        result.first_use = first_use_questions(ws)
     return result
+
+
+# Aspect presets for export derivatives — centered crop, no upscaling.
+# The platform mapping is a hint, not a rule: vertical = TikTok / Reels /
+# Shorts, square = feed posts, wide = YouTube / X.
+ASPECT_FILTERS = {
+    "original": None,
+    "vertical": "crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)'",
+    "square": "crop=w='min(iw,ih)':h='min(iw,ih)'",
+    "wide": "crop=w='min(iw,ih*16/9)':h='min(ih,iw*9/16)'",
+}
+
+
+def first_use_questions(ws: Workspace) -> dict:
+    """The one-time clip setup, as multiple-choice data.
+
+    The product ships the questions so every interface (any agent, the CLI,
+    the app) asks the same thing the same way: the user PICKS, they never
+    elaborate. Answers are saved via settings (plus clip.setup_done=true) and
+    never asked again."""
+    style = ws.effective_settings()["clip"]["caption_style"]
+    return {
+        "ask_once": True,
+        "instructions": (
+            "First clip in this workspace: ask the user these once (as "
+            "multiple choice — one message, not an interview), save each "
+            "answer with the settings tool, then set clip.setup_done=true. "
+            "If they skip, set setup_done=true anyway and keep defaults — "
+            "never ask twice."),
+        "questions": [
+            {"setting": "clip.captions",
+             "question": "Captions on your clips?",
+             "options": [
+                 {"value": "burn", "label": "Burned into the video — always "
+                  "visible, no player toggle (what social feeds expect)"},
+                 {"value": "soft", "label": "Sidecar file (.srt) next to the "
+                  "clip — players and editors toggle them"},
+                 {"value": "off", "label": "No captions unless I ask"},
+             ]},
+            {"setting": "clip.aspect",
+             "question": "Default shape for shareable exports?",
+             "options": [
+                 {"value": "original", "label": "Keep the source dimensions"},
+                 {"value": "vertical", "label": "Vertical 9:16 — TikTok, "
+                  "Reels, Shorts"},
+                 {"value": "square", "label": "Square 1:1 — feed posts"},
+                 {"value": "wide", "label": "Wide 16:9 — YouTube, X"},
+             ]},
+            {"setting": "clip.caption_style.color",
+             "question": "Caption color?",
+             "options": [
+                 {"value": style["color"], "label": "Clean white (default)"},
+                 {"value": "#FFE14D", "label": "Bold yellow — the classic "
+                  "social-caption look"},
+                 {"value": "custom", "label": "A brand color (give a hex)"},
+             ]},
+            {"setting": "clip.export_dir",
+             "question": "Where should post-ready files land?",
+             "options": [
+                 {"value": None, "label": "Only in the library (default)"},
+                 {"value": "ask", "label": "A working folder — name it once "
+                  "and every export lands there"},
+             ]},
+        ],
+    }
 
 
 def _apply_presentation(result: ClipResult, entry, ws: Workspace, *,
                         captions_mode: Optional[str], lang: Optional[str],
                         captions_file: Optional[str], word_level: bool,
                         label_flag: Optional[bool], label_text: Optional[str],
-                        hook: Optional[str], out_dir: Optional[str], source,
+                        hook: Optional[str], aspect: Optional[str],
+                        out_dir: Optional[str], source,
                         meta_path: Optional[Path] = None,
                         transcript=None) -> None:
     """The presentation layer: caption data, sidecars, label, export, burn.
@@ -231,6 +303,10 @@ def _apply_presentation(result: ClipResult, entry, ws: Workspace, *,
     mode = captions_mode or settings["captions"]
     if mode not in ("off", "soft", "burn"):
         raise ValueError(f"captions must be off|soft|burn, got {mode!r}")
+    result.aspect = aspect or settings["aspect"]
+    if result.aspect not in ASPECT_FILTERS:
+        raise ValueError(
+            f"aspect must be one of {sorted(ASPECT_FILTERS)}, got {result.aspect!r}")
 
     # Label: explicit text > structured meta (never agent memory).
     speakers = resolve_speakers(source, ws) if source is not None else None
@@ -305,10 +381,15 @@ def _apply_presentation(result: ClipResult, entry, ws: Workspace, *,
                                      ensure_ascii=False), encoding="utf-8")
             result.export_paths.append(lj)
 
-        if mode == "burn":
-            burn_captions = _gate_burn_captions(result, entry, caption_result,
-                                                captions_file)
-            burned = _burn(result, burn_captions, the_label, dest)
+        if mode == "burn" or result.aspect != "original":
+            burn_captions = None
+            if mode == "burn":
+                burn_captions = _gate_burn_captions(result, entry,
+                                                    caption_result,
+                                                    captions_file)
+            burned = _burn(result, burn_captions, the_label, dest,
+                           aspect=result.aspect,
+                           style=settings["caption_style"])
             if burned is not None:
                 result.export_paths.append(burned)
                 stills = _verify_stills(burned, result, dest)
@@ -361,18 +442,55 @@ def _gate_burn_captions(result: ClipResult, entry, caption_result,
             return None
         return captions_file
     if caption_result is not None and caption_result.translation_needed:
+        if caption_result.language is None:
+            # Unknown source language: can't prove a mismatch, so burn —
+            # but say the check is on the user/agent.
+            result.capability_note = _append_note(
+                result.capability_note,
+                "caption language is unlabeled — check the burned text "
+                f"matches the user's preferred {caption_result.requested_language} "
+                "(verify.png shows the frames)")
+            return str(result.captions_path) if result.captions_path else None
         result.capability_note = _append_note(
             result.capability_note,
-            "refusing to burn source-language captions when the user prefers "
-            f"{caption_result.requested_language} — translate the sidecar, "
-            "verify it (captions --verify), and pass it as captions_file")
+            f"refusing to burn {caption_result.language} captions when the "
+            f"user prefers {caption_result.requested_language} — translate "
+            "the sidecar, verify it (captions --verify), and pass it as "
+            "captions_file")
         return None
     return str(result.captions_path) if result.captions_path else None
 
 
+def _hex_to_ass(hex_color: str, alpha: str = "00") -> str:
+    """``#RRGGBB`` -> libass ``&HAABBGGRR`` (note the reversed byte order)."""
+    h = (hex_color or "#FFFFFF").lstrip("#")
+    r, g, b = h[0:2], h[2:4], h[4:6]
+    return f"&H{alpha}{b}{g}{r}"
+
+
+def _force_style(style: dict) -> str:
+    """The libass force_style string for the user's caption styling."""
+    boxed = style.get("boxed", True)
+    outline = _hex_to_ass(style.get("outline", "#000000"),
+                          alpha="60" if boxed else "00")
+    parts = [
+        f"PrimaryColour={_hex_to_ass(style.get('color', '#FFFFFF'))}",
+        f"OutlineColour={outline}",
+        "BorderStyle=4" if boxed else "BorderStyle=1",
+        "Alignment=8" if style.get("position") == "top" else "Alignment=2",
+        "MarginV=40",
+    ]
+    if style.get("font"):
+        parts.insert(0, f"FontName={style['font']}")
+    return ",".join(parts)
+
+
 def _burn(result: ClipResult, captions_path: Optional[str],
-          label: Optional[str], dest: Path) -> Optional[Path]:
-    """Render the hard-subbed social derivative into the export dir.
+          label: Optional[str], dest: Path, *,
+          aspect: str = "original",
+          style: Optional[dict] = None) -> Optional[Path]:
+    """Render the social derivative into the export dir: aspect crop,
+    hard subs (styled per clip.caption_style), name-plate label.
 
     Capability-gated: no libass -> no subtitle burn, no drawtext -> no label
     burn; each degrade is reported, nothing fails mid-encode. RTL caption
@@ -383,16 +501,20 @@ def _burn(result: ClipResult, captions_path: Optional[str],
     if not result.has_video:
         result.capability_note = _append_note(
             result.capability_note,
-            "burn-in needs a video track; this clip is audio-only — "
-            "use the soft sidecar with a player that renders it")
+            "burn-in / social framing needs a video track; this clip is "
+            "audio-only — use the soft sidecar with a player that renders it")
         return None
 
+    style = style or {}
     caps = ffmpeg_capabilities()
     filters = []
+    if ASPECT_FILTERS.get(aspect):
+        filters.append(ASPECT_FILTERS[aspect])
     if captions_path:
         if caps["subtitles"]:
             srt = str(captions_path).replace("'", r"\'")
-            filters.append(f"subtitles='{srt}'")
+            filters.append(
+                f"subtitles='{srt}':force_style='{_force_style(style)}'")
             from .captions import is_rtl
             lang = (result.captions or {}).get("requested_language") \
                 or (result.captions or {}).get("language")

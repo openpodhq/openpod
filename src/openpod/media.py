@@ -62,7 +62,11 @@ def get_media(entry_id: str, source: Optional[SourceRef], *,
     cache = _cache_dir(ws, entry_id)
 
     if audio_path:
-        return Media(path=Path(audio_path), has_video=False, cached=False)
+        p = Path(audio_path)
+        # Named audio_path for history, but users hand it video files too —
+        # judge by what it is, not what the parameter is called.
+        return Media(path=p, has_video=p.suffix.lower() in _VIDEO_EXTS,
+                     cached=False)
 
     want_video = want_video and source_has_video(source)
     hit = _find_cached(cache, want_video=want_video)

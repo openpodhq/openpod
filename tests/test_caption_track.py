@@ -120,12 +120,29 @@ def test_burn_refuses_unverified_translation(workspace, vtt_file,
                                              tiny_wav_file, tmp_path):
     workspace.set_setting("locale.preferred_language", "he")
     entry = _entry(workspace, vtt_file)
+    # Known source language that differs from the preference -> refusal.
+    tr = entry.read_transcript()
+    tr.language = "en"
+    entry.write_transcript(tr)
     r = clip(entry.entry_id, 5, 20, workspace=workspace,
              audio_path=str(tiny_wav_file), captions="burn",
              out_dir=str(tmp_path / "x"))
     # translation needed + no verified file -> refusal note, no social file
     assert "refusing to burn" in r.capability_note
     assert not any("social" in p.name for p in r.export_paths)
+
+
+def test_burn_proceeds_when_language_unlabeled(workspace, vtt_file,
+                                               tiny_wav_file, tmp_path):
+    # Unknown source language: can't prove a mismatch — burn, but tell the
+    # user to check the frames (the gate only blocks proven mismatches).
+    workspace.set_setting("locale.preferred_language", "he")
+    entry = _entry(workspace, vtt_file)
+    r = clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(tiny_wav_file), captions="burn",
+             out_dir=str(tmp_path / "x"))
+    assert "refusing to burn" not in (r.capability_note or "")
+    assert "unlabeled" in r.capability_note
 
 
 def test_burn_gate_rejects_low_coverage_file(workspace, vtt_file,

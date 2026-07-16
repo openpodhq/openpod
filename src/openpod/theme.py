@@ -16,10 +16,19 @@ Color capability ladder, checked in order:
 Force-disabled by ``NO_COLOR`` (any value), a non-TTY ``stdout``, or
 ``OPENPOD_NO_COLOR=1`` — in all three cases every function here returns
 plain text with zero escape codes, so the brand still reads in plaintext.
+
+Encoding is a separate ladder from color, and stripping ANSI does not help:
+``▸``, the box rules, ``·`` and ``—`` are still non-ASCII. On a stdout that
+cannot encode them (a Windows redirect falling back to cp1252, a POSIX/C
+locale in CI) an unguarded ``print`` raises ``UnicodeEncodeError`` and takes
+the command down. :func:`enable_safe_output` installs an error handler that
+transliterates to ASCII instead — every mapping is 1:1, so the banner box
+stays aligned.
 """
 
 from __future__ import annotations
 
+import codecs
 import json
 import os
 import sys
@@ -187,3 +196,46 @@ def banner() -> str:
         else:  # footer
             styled.append(f"{_DIM}{line}{_RESET}" if line.strip() else line)
     return "\n".join(styled)
+
+
+# --- encoding safety -------------------------------------------------------
+# Non-ASCII lives in ~38 modules (— · … → ↳ ✓ ✗ ═ ‖ §). Per-module ASCII
+# constants would be endless and would drift; one codec error handler covers
+# every print in the package, including ones not written yet.
+_ASCII_FALLBACKS = {
+    "▸": ">", "✓": "+", "✗": "x",          # signature + status glyphs
+    "┌": "+", "┐": "+", "└": "+", "┘": "+",  # banner box corners
+    "─": "-", "│": "|", "═": "=",            # rules
+    "·": "-", "—": "-", "–": "-", "±": "+",  # punctuation
+    "→": ">", "←": "<", "↔": "-", "↳": ">",  # arrows
+    "‖": "|", "§": "S", "“": '"', "”": '"',
+    "…": ".", "é": "e", "ü": "u",
+}
+
+
+def _ascii_error_handler(exc: UnicodeError) -> tuple[str, int]:
+    """Map an unencodable run to ASCII. 1:1 so column alignment survives."""
+    bad = exc.object[exc.start:exc.end]  # type: ignore[attr-defined]
+    return ("".join(_ASCII_FALLBACKS.get(ch, "?") for ch in bad), exc.end)  # type: ignore[attr-defined]
+
+
+codecs.register_error("openpod_ascii", _ascii_error_handler)
+
+
+def enable_safe_output() -> None:
+    """Guard stdout/stderr against ``UnicodeEncodeError``.
+
+    A no-op on the UTF-8 terminals almost everyone has; only rewires a stream
+    that genuinely cannot carry the glyph.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = getattr(stream, "encoding", None)
+        if not encoding:
+            continue
+        try:
+            GLYPH.encode(encoding)
+        except (UnicodeEncodeError, LookupError):
+            try:
+                stream.reconfigure(errors="openpod_ascii")  # type: ignore[union-attr]
+            except (AttributeError, OSError, ValueError):
+                pass  # nothing more we can safely do; never block the command
