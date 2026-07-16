@@ -1,12 +1,12 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/wordmark-blue-dark-636.png">
-    <img src="assets/brand/wordmark-blue-636.png" alt="OpenPod" width="212">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/openpodhq/openpod/main/assets/brand/wordmark-blue-dark-636.png">
+    <img src="https://raw.githubusercontent.com/openpodhq/openpod/main/assets/brand/wordmark-blue-636.png" alt="OpenPod" width="212">
   </picture>
 </p>
 
 <p align="center">
-  <img src="assets/demo.gif" alt="An AI agent pulls the minutes that matter from hundreds of hours across the shows you follow — every hit timestamped to verify" width="720">
+  <img src="https://raw.githubusercontent.com/openpodhq/openpod/main/assets/demo.gif" alt="An AI agent pulls the minutes that matter from hundreds of hours across the shows you follow — every hit timestamped to verify" width="720">
 </p>
 
 # OpenPod

@@ -67,6 +67,24 @@ openpod-mcp = "openpod.mcp_server:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/openpod"]
 
+# Declare sdist contents explicitly. Hatchling honours the root .gitignore but
+# not the `*` .gitignore that `python -m venv` writes inside a venv, so a local
+# .venv-test/ was landing in the tarball (3,210 files, 15 MB) and its absolute
+# symlinks broke extraction. An allowlist can't be defeated by stray dirs.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Put the repo root on sys.path so `from tests.conftest import ...` resolves.
+# Without it, prepend import mode inserts tests/ rather than the root, and
+# collection dies under a bare `pytest` (though not under `python -m pytest`).
+pythonpath = ["."]
 addopts = "-q"
