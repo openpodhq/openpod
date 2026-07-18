@@ -22,6 +22,11 @@ All notable changes to OpenPod are documented here. Format loosely follows
   `aspect` on MCP clip. Also fixed: a video file passed via `audio_path`
   now counts as video.
 
+### Changed
+- **Share card: the blue `▸ m:ss` badge is the deep link itself** — the
+  "open at m:ss in the episode" caption is gone. The signature is always
+  blue and always live; it doesn't need a label saying so.
+
 ### Fixed
 - **No more crash on a stdout that can't encode the brand glyphs.**
   `openpod search` (and any other command) printed nothing and exited 1 on

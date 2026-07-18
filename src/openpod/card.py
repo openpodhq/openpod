@@ -49,13 +49,13 @@ def render_card_html(source: Optional[SourceRef], seconds: float, quote: str,
     badge = html.escape(f"{theme.GLYPH} {ts}")
 
     if link:
+        # The blue badge IS the link — the signature is "always blue, always
+        # a live deep-link"; it needs no caption spelling that out.
         moment_block = (
             f'<a href="{html.escape(link)}" style="display:flex; align-items:center; '
-            f'gap:18px; text-decoration:none;">'
+            f'text-decoration:none;">'
             f'<span style="font-size:34px; font-weight:600; color:{theme.BLUE_LIGHT}; '
-            f'letter-spacing:0.01em;">{badge}</span>'
-            f'<span style="font-size:16px; color:{theme.BLUE_LIGHT}; text-decoration:underline; '
-            f'text-underline-offset:3px;">open at {html.escape(ts)} in the episode</span></a>'
+            f'letter-spacing:0.01em;">{badge}</span></a>'
         )
     else:
         moment_block = (
