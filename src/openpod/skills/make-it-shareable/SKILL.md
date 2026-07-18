@@ -18,16 +18,20 @@ to downstream tools.
 1. Call `doctor` once: can this machine burn text at all (libass/drawtext)?
    If not, the deliverable is soft captions + sidecars — say so up front.
 2. Read `settings`: `locale.preferred_language`, `clip.export_dir`,
-   `clip.aspect`, `clip.caption_style`, `clip.label_template`. If
-   `export_dir` is unset, ask the user for their working folder once and
-   save it via `settings` — never default to the library.
+   `clip.aspect`, `clip.caption_style`, `clip.label`,
+   `clip.label_template`. Once first-use has run (`clip.setup_done`), an
+   unset `export_dir` means the user CHOSE the library — respect it, don't
+   re-ask. An `export_dir` of `"ask"` means the interface still owes them
+   the folder-name question: ask once, save the real path via `settings`.
 3. **First use**: if a clip result carries `first_use`, this workspace has
    never set its clip defaults. Ask its questions ONCE — one message, pure
-   multiple choice (captions burned/soft/off, shape per platform, caption
-   color, export folder) — save the answers via `settings`, set
-   `clip.setup_done=true`, and never ask again. A user posting to social
-   almost always wants **burned** captions and a platform shape; don't
-   silently hand them a sidecar they can't see.
+   multiple choice, in its order: where clips land (`.openpod` library /
+   the working directory / a named folder), captions burned/soft/off,
+   caption color, caption style (boxed or outlined), clip dimensions per
+   platform, and whether to burn a headline plate — save the answers via
+   `settings`, set `clip.setup_done=true`, and never ask again. A user
+   posting to social almost always wants **burned** captions and a
+   platform shape; don't silently hand them a sidecar they can't see.
 
 ## The pipeline (captions are data before they are pixels)
 

@@ -250,6 +250,16 @@ def first_use_questions(ws: Workspace) -> dict:
             "If they skip, set setup_done=true anyway and keep defaults — "
             "never ask twice."),
         "questions": [
+            {"setting": "clip.export_dir",
+             "question": "Where should your clips land?",
+             "options": [
+                 {"value": None, "label": "Inside .openpod — the library "
+                  "keeps every clip filed with its episode (default)"},
+                 {"value": ".", "label": "The working directory — clips "
+                  "appear right here, next to your files"},
+                 {"value": "ask", "label": "A folder of yours — name it once "
+                  "and every export lands there"},
+             ]},
             {"setting": "clip.captions",
              "question": "Captions on your clips?",
              "options": [
@@ -259,15 +269,6 @@ def first_use_questions(ws: Workspace) -> dict:
                   "clip — players and editors toggle them"},
                  {"value": "off", "label": "No captions unless I ask"},
              ]},
-            {"setting": "clip.aspect",
-             "question": "Default shape for shareable exports?",
-             "options": [
-                 {"value": "original", "label": "Keep the source dimensions"},
-                 {"value": "vertical", "label": "Vertical 9:16 — TikTok, "
-                  "Reels, Shorts"},
-                 {"value": "square", "label": "Square 1:1 — feed posts"},
-                 {"value": "wide", "label": "Wide 16:9 — YouTube, X"},
-             ]},
             {"setting": "clip.caption_style.color",
              "question": "Caption color?",
              "options": [
@@ -276,12 +277,30 @@ def first_use_questions(ws: Workspace) -> dict:
                   "social-caption look"},
                  {"value": "custom", "label": "A brand color (give a hex)"},
              ]},
-            {"setting": "clip.export_dir",
-             "question": "Where should post-ready files land?",
+            {"setting": "clip.caption_style.boxed",
+             "question": "Caption style?",
              "options": [
-                 {"value": None, "label": "Only in the library (default)"},
-                 {"value": "ask", "label": "A working folder — name it once "
-                  "and every export lands there"},
+                 {"value": True, "label": "Boxed — a dark strip behind the "
+                  "text (the social standard, default)"},
+                 {"value": False, "label": "Outlined — floating text with a "
+                  "dark contour, no strip"},
+             ]},
+            {"setting": "clip.aspect",
+             "question": "Clip dimensions for shareable exports?",
+             "options": [
+                 {"value": "original", "label": "Keep the source dimensions"},
+                 {"value": "vertical", "label": "Vertical 9:16 — TikTok, "
+                  "Reels, Shorts"},
+                 {"value": "square", "label": "Square 1:1 — feed posts"},
+                 {"value": "wide", "label": "Wide 16:9 — YouTube, X"},
+             ]},
+            {"setting": "clip.label",
+             "question": "Burn a headline plate at the top?",
+             "options": [
+                 {"value": False, "label": "No headline (default)"},
+                 {"value": True, "label": "Yes — speaker and episode title "
+                  "on a plate, from structured metadata "
+                  "(clip.label_template: '{name}, {title}')"},
              ]},
         ],
     }
@@ -354,8 +373,12 @@ def _apply_presentation(result: ClipResult, entry, ws: Workspace, *,
     elif meta_path is not None and (speakers or hook):
         _update_clip_meta(meta_path, speakers=speakers, hook=hook)
 
-    # Export dir: the working-folder package.
+    # Export dir: the working-folder package. "ask" is the first-use
+    # sentinel meaning the interface still owes the user a question —
+    # never a folder name.
     dest_setting = out_dir or settings["export_dir"]
+    if dest_setting == "ask":
+        dest_setting = None
     if dest_setting:
         import shutil as _shutil
 

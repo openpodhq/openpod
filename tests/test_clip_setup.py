@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from openpod.catch import catch
@@ -18,14 +20,30 @@ def test_first_use_block_until_setup_done(workspace, vtt_file, tiny_wav_file):
     assert r.first_use is not None
     assert r.first_use["ask_once"]
     settings = {q["setting"] for q in r.first_use["questions"]}
-    assert {"clip.captions", "clip.aspect",
-            "clip.caption_style.color", "clip.export_dir"} <= settings
+    assert {"clip.export_dir", "clip.captions", "clip.caption_style.color",
+            "clip.caption_style.boxed", "clip.aspect",
+            "clip.label"} <= settings
     # every question is multiple choice — options provided, nothing to write
     assert all(q["options"] for q in r.first_use["questions"])
+    # where-to-save leads: the first decision is where clips land, and the
+    # choices are the library, the working directory, or a named folder
+    save_q = r.first_use["questions"][0]
+    assert save_q["setting"] == "clip.export_dir"
+    save_values = [o["value"] for o in save_q["options"]]
+    assert save_values == [None, ".", "ask"]
+    assert ".openpod" in save_q["options"][0]["label"]
+    assert "working directory" in save_q["options"][1]["label"]
     # burned captions are the first (recommended-for-social) option
     cap_q = next(q for q in r.first_use["questions"]
                  if q["setting"] == "clip.captions")
     assert cap_q["options"][0]["value"] == "burn"
+    # style and headline both lead with the shipped default
+    boxed_q = next(q for q in r.first_use["questions"]
+                   if q["setting"] == "clip.caption_style.boxed")
+    assert boxed_q["options"][0]["value"] is True
+    label_q = next(q for q in r.first_use["questions"]
+                   if q["setting"] == "clip.label")
+    assert label_q["options"][0]["value"] is False
     assert "never ask twice" in r.first_use["instructions"].lower()
 
     workspace.set_setting("clip.setup_done", True)
@@ -48,6 +66,35 @@ def test_first_use_questions_platform_hints(workspace):
     aspect_q = next(x for x in q["questions"] if x["setting"] == "clip.aspect")
     labels = " ".join(o["label"] for o in aspect_q["options"])
     assert "TikTok" in labels and "YouTube" in labels
+
+
+def test_export_dir_working_directory_choice(workspace, vtt_file,
+                                             tiny_wav_file, tmp_path,
+                                             monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    workspace.set_setting("clip.export_dir", ".")
+    workspace.set_setting("clip.setup_done", True)
+    entry = _entry(workspace, vtt_file)
+    r = clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(tiny_wav_file))
+    # the master's export copy lands in the working directory
+    assert r.export_dir == Path(".")
+    assert any(p.resolve().parent == tmp_path.resolve()
+               for p in r.export_paths)
+
+
+def test_ask_sentinel_is_never_a_folder(workspace, vtt_file, tiny_wav_file,
+                                        tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    workspace.set_setting("clip.export_dir", "ask")
+    workspace.set_setting("clip.setup_done", True)
+    entry = _entry(workspace, vtt_file)
+    r = clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(tiny_wav_file))
+    # "ask" means the interface still owes the user a question — the clip
+    # cuts fine, exports nowhere, and no folder literally named "ask" appears
+    assert r.export_dir is None
+    assert not (tmp_path / "ask").exists()
 
 
 # -- aspect --------------------------------------------------------------------- #

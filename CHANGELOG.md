@@ -7,11 +7,14 @@ All notable changes to OpenPod are documented here. Format loosely follows
 
 ### Added
 - **First-use clip setup + social framing.** The first clip in a workspace
-  returns a `first_use` block: the product's own multiple-choice questions
-  (captions burned/soft/off — burned listed first, it's what social feeds
-  expect; export shape; caption color; working folder), asked once in one
-  message, saved via settings, then `clip.setup_done` — never asked twice,
-  skipping keeps defaults. New `clip.aspect` presets crop the **export
+  returns a `first_use` block: the product's own multiple-choice questions,
+  asked once in one message — where clips land (the `.openpod` library, the
+  working directory, or a named folder), captions burned/soft/off (burned
+  listed first, it's what social feeds expect), caption color, caption
+  style (boxed strip or outlined text), clip dimensions, and whether to
+  burn a headline plate — saved via settings, then `clip.setup_done` —
+  never asked twice, skipping keeps defaults. The `"ask"` export-dir
+  sentinel is never treated as a folder name at cut time. New `clip.aspect` presets crop the **export
   derivative only** (vertical 9:16 TikTok/Reels/Shorts, square 1:1, wide
   16:9 — the library master always keeps source dimensions), and
   `clip.caption_style` (font/color/outline/boxed/position) styles burned

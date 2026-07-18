@@ -232,8 +232,9 @@ def _cmd_clip(args) -> int:
         print(f"  note: {result.capability_note}")
     if result.first_use:
         print("  first clip here — set your defaults once "
-              "(captions burn/soft/off, shape, color, export folder):\n"
-              "    openpod settings clip.captions burn   # etc., then\n"
+              "(where clips land, captions, color & style, dimensions, "
+              "headline):\n"
+              "    openpod settings clip.export_dir .    # etc., then\n"
               "    openpod settings clip.setup_done true")
     if result.card_path:
         print(f"  share card: {theme.path(str(result.card_path))}")
