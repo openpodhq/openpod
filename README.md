@@ -72,7 +72,7 @@ Say *"catch me up on this episode"* and the agent runs `catch`, reads your local
 
 | Tool | Does | Writes |
 |---|---|---|
-| `catch <link>` | Ingest → transcribe → structure → brief | `transcript.json`, `ideas.md`, `briefing.md` |
+| `catch <link>` | Ingest → transcribe → structure → brief | `transcript.json`, `transcript.md`, `ideas.md`, `briefing.md` |
 | `search <query>` | Retrieve across your local library | ranked cues with deep links |
 | `export_timestamps <entry>` | Navigable TOC with deep links | JSON / Markdown |
 | `clip <entry> <start> <end>` | Sentence-snapped local cut + shareable deep-link card | media in `clips/`, card |
@@ -125,9 +125,14 @@ Everything lands in a plain, user-owned tree:
   persona.md              # who you are (evolving, local)
   follows.yaml            # subscribed RSS + YouTube channels
   library/<show>/<episode>/
-    transcript.json  briefing.md  ideas.md  notes.md  clips/
+    transcript.json  transcript.md  briefing.md  ideas.md  summary.md  notes.md  clips/
   index/                  # local search index (SQLite FTS + embeddings)
 ```
+
+`transcript.json` is the machine's copy. `transcript.md` is the one you read — the same words
+reflowed into paragraphs, chaptered, with a `▸ m:ss` link per paragraph that opens the player
+at that moment. Open it in any editor that previews Markdown; the chapter headings become the
+outline pane.
 
 Want it on two machines? Put the tree in git or Dropbox yourself. OpenPod won't sync it for you.
 
