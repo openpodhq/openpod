@@ -43,6 +43,7 @@ class ClipResult:
     export_dir: Optional[Path] = None      # working-folder copies landed here
     export_paths: list = None              # everything copied/rendered there
     aspect: str = "original"               # aspect of the export derivative
+    style: str = "plain"                   # burned-caption rendering style
     # Until clip.setup_done, this carries the one-time multiple-choice
     # setup questions the interface should ask (then save via settings).
     first_use: Optional[dict] = None
@@ -129,6 +130,7 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
          captions_file: Optional[str] = None, word_level: bool = False,
          label: Optional[bool] = None, label_text: Optional[str] = None,
          hook: Optional[str] = None, aspect: Optional[str] = None,
+         style: Optional[str] = None,
          out_dir: Optional[str] = None) -> ClipResult:
     """Cut a clip. ``video=None`` (default) preserves video whenever the
     source has it; ``video=False`` forces audio-only; ``video=True`` demands
@@ -215,8 +217,9 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
     _apply_presentation(result, entry, ws, captions_mode=captions, lang=lang,
                         captions_file=captions_file, word_level=word_level,
                         label_flag=label, label_text=label_text, hook=hook,
-                        aspect=aspect, out_dir=out_dir, source=source,
-                        meta_path=meta_path, transcript=transcript)
+                        aspect=aspect, style=style, out_dir=out_dir,
+                        source=source, meta_path=meta_path,
+                        transcript=transcript)
     if not ws.effective_settings()["clip"]["setup_done"]:
         result.first_use = first_use_questions(ws)
     return result
@@ -311,7 +314,7 @@ def _apply_presentation(result: ClipResult, entry, ws: Workspace, *,
                         captions_file: Optional[str], word_level: bool,
                         label_flag: Optional[bool], label_text: Optional[str],
                         hook: Optional[str], aspect: Optional[str],
-                        out_dir: Optional[str], source,
+                        style: Optional[str], out_dir: Optional[str], source,
                         meta_path: Optional[Path] = None,
                         transcript=None) -> None:
     """The presentation layer: caption data, sidecars, label, export, burn.
@@ -326,6 +329,13 @@ def _apply_presentation(result: ClipResult, entry, ws: Workspace, *,
     if result.aspect not in ASPECT_FILTERS:
         raise ValueError(
             f"aspect must be one of {sorted(ASPECT_FILTERS)}, got {result.aspect!r}")
+    from .ass import STYLES
+
+    style_mode = style or settings["style"]
+    if style_mode not in STYLES:
+        raise ValueError(
+            f"style must be one of {STYLES}, got {style_mode!r}")
+    result.style = style_mode
 
     # Label: explicit text > structured meta (never agent memory).
     speakers = resolve_speakers(source, ws) if source is not None else None
@@ -412,7 +422,8 @@ def _apply_presentation(result: ClipResult, entry, ws: Workspace, *,
                                                     captions_file)
             burned = _burn(result, burn_captions, the_label, dest,
                            aspect=result.aspect,
-                           style=settings["caption_style"])
+                           style=settings["caption_style"],
+                           style_mode=style_mode, words=words)
             if burned is not None:
                 result.export_paths.append(burned)
                 stills = _verify_stills(burned, result, dest)
@@ -485,10 +496,30 @@ def _gate_burn_captions(result: ClipResult, entry, caption_result,
 
 
 def _hex_to_ass(hex_color: str, alpha: str = "00") -> str:
-    """``#RRGGBB`` -> libass ``&HAABBGGRR`` (note the reversed byte order)."""
-    h = (hex_color or "#FFFFFF").lstrip("#")
-    r, g, b = h[0:2], h[2:4], h[4:6]
-    return f"&H{alpha}{b}{g}{r}"
+    """``#RRGGBB`` -> libass ``&HAABBGGRR``. Lives in ass.py now; kept as an
+    alias for its old callers."""
+    from .ass import hex_to_ass
+
+    return hex_to_ass(hex_color, alpha)
+
+
+def _write_burn_ass(result: ClipResult, captions_path, dest: Path, *,
+                    style: dict, style_mode: str,
+                    words: Optional[list]) -> Path:
+    """Build the ``.ass`` the burn renders — part of the export package, so
+    the exact styling that produced the derivative is inspectable."""
+    from . import transcript as tx
+    from .ass import build_ass
+
+    cues = tx.load_file(Path(captions_path)).cues
+    lines = [(c.start, c.end if c.end is not None else c.start + 2.0, c.text)
+             for c in cues]
+    ass_path = dest / f"{result.path.stem}.ass"
+    ass_path.write_text(
+        build_ass(lines, style=style, mode=style_mode, words=words),
+        encoding="utf-8")
+    result.export_paths.append(ass_path)
+    return ass_path
 
 
 def _force_style(style: dict) -> str:
@@ -511,9 +542,13 @@ def _force_style(style: dict) -> str:
 def _burn(result: ClipResult, captions_path: Optional[str],
           label: Optional[str], dest: Path, *,
           aspect: str = "original",
-          style: Optional[dict] = None) -> Optional[Path]:
+          style: Optional[dict] = None,
+          style_mode: str = "plain",
+          words: Optional[list] = None) -> Optional[Path]:
     """Render the social derivative into the export dir: aspect crop,
-    hard subs (styled per clip.caption_style), name-plate label.
+    hard subs (an ASS built per clip.caption_style + clip.style — per-word
+    keyword color and karaoke need inline override tags a plain SRT can't
+    carry), name-plate label.
 
     Capability-gated: no libass -> no subtitle burn, no drawtext -> no label
     burn; each degrade is reported, nothing fails mid-encode. RTL caption
@@ -535,9 +570,16 @@ def _burn(result: ClipResult, captions_path: Optional[str],
         filters.append(ASPECT_FILTERS[aspect])
     if captions_path:
         if caps["subtitles"]:
-            srt = str(captions_path).replace("'", r"\'")
-            filters.append(
-                f"subtitles='{srt}':force_style='{_force_style(style)}'")
+            if style_mode == "karaoke" and not words:
+                result.capability_note = _append_note(
+                    result.capability_note,
+                    "karaoke needs the word-level track (word_level=True, "
+                    "openpod[asr]) — burned with keyword styling instead")
+            ass_path = _write_burn_ass(result, captions_path, dest,
+                                       style=style, style_mode=style_mode,
+                                       words=words)
+            esc_path = str(ass_path).replace("'", r"\'")
+            filters.append(f"subtitles='{esc_path}'")
             from .captions import is_rtl
             lang = (result.captions or {}).get("requested_language") \
                 or (result.captions or {}).get("language")

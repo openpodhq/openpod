@@ -26,6 +26,19 @@ All notable changes to OpenPod are documented here. Format loosely follows
   now counts as video.
 
 ### Added
+- **Caption styles: keyword / marker / karaoke.** The burn now writes an
+  `.ass` (part of the export package) instead of driving libass with one
+  uniform `force_style` per line — the capability every named style hinges
+  on is a differently-colored word, which SRT can't express. `clip.style`
+  (long reserved in settings, read nowhere) is now wired: `keyword` and
+  `marker` render the agent-marked `*word*` in `caption_style.keyword_color`
+  (brand blue by default) — marked per line by the agent in the captions
+  file, the ‖ contract extended, never guessed (and for RTL text, not
+  guessable); `karaoke` lights words as they're spoken, consuming the
+  word-level track (`word_level=True`), degrading to keyword styling with a
+  note when no track exists. `caption_style` gains `keyword_color`,
+  `weight`, and `shadow`; `‖` in a burned line now renders as a real line
+  break. `--style` on the CLI, `style` on MCP clip.
 - **`transcript.md` — the reading view of every transcript.** Written by
   `catch` next to `transcript.json`, from the same pass: cues reflowed into
   ~20–42s paragraphs (sentence-boundary merging; speaker changes, chapter

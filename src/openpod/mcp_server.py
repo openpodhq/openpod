@@ -116,7 +116,7 @@ def build_server():
              lang: Optional[str] = None, captions_file: Optional[str] = None,
              word_level: bool = False, label: Optional[bool] = None,
              label_text: Optional[str] = None, hook: Optional[str] = None,
-             aspect: Optional[str] = None,
+             aspect: Optional[str] = None, style: Optional[str] = None,
              out_dir: Optional[str] = None) -> dict:
         """Cut a local, user-owned clip from a caught episode (snapping to
         sentence boundaries) and generate a shareable deep-link card. Requires
@@ -141,6 +141,13 @@ def build_server():
         TikTok/Reels/Shorts, square 1:1, wide 16:9); the master keeps source
         dimensions. Caption styling comes from clip.caption_style settings.
 
+        `style` picks the burned-caption rendering: plain | keyword |
+        marker | karaoke. For keyword/marker YOU choose the one word that
+        carries each line and mark it `*word*` in the captions_file — same
+        per-line contract as ‖ forced breaks; never guess a keyword list,
+        especially for RTL text. Karaoke lights words as spoken and needs
+        word_level=True (falls back to keyword styling with a note).
+
         FIRST USE: when the result carries `first_use`, this workspace has
         never configured clipping — ask the user its questions ONCE, in one
         message, as multiple choice (never a form, never prose), save each
@@ -154,7 +161,7 @@ def build_server():
                   video=video, captions=captions, lang=lang,
                   captions_file=captions_file, word_level=word_level,
                   label=label, label_text=label_text, hook=hook,
-                  aspect=aspect, out_dir=out_dir)
+                  aspect=aspect, style=style, out_dir=out_dir)
         return {
             "path": str(r.path),
             "start": r.start,

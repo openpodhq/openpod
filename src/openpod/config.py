@@ -15,6 +15,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from .theme import BLUE_DARK
+
 DOTDIR = ".openpod"
 
 # The documented settings schema (v0). settings.yaml holds only what the
@@ -37,7 +39,11 @@ DEFAULT_SETTINGS: dict = {
         "captions": "off",              # off | soft (sidecar) | burn (export only)
         "caption_language": "preferred",  # preferred | source | explicit code
         "burn_in": False,               # hard subs only on export derivatives
-        "style": "karaoke",             # caption chunking/render style
+        # Burned-caption rendering: plain (uniform) | keyword / marker (the
+        # agent-marked *word* renders in keyword_color; marker = the boxed
+        # variant by convention) | karaoke (words light up as spoken —
+        # needs the word_level track, degrades to keyword without it).
+        "style": "karaoke",
         # Export derivative aspect: original | vertical (9:16 — TikTok/Reels/
         # Shorts) | square (1:1 — feed posts) | wide (16:9 — YouTube/X).
         # The library master ALWAYS keeps source dimensions.
@@ -49,6 +55,11 @@ DEFAULT_SETTINGS: dict = {
             "outline": "#000000",      # outline/box color
             "boxed": True,              # semi-opaque box behind text
             "position": "bottom",      # bottom | top
+            # Keyword/karaoke highlight color — brand blue (dark-surface
+            # accent; burned video is a dark surface more often than not).
+            "keyword_color": BLUE_DARK,
+            "weight": None,             # None = renderer default; >=600 bold
+            "shadow": None,             # None/0 = off; else shadow depth px
         },
         "label": False,                 # speaker name plate on export
         "label_template": "{name}, {title}",

@@ -196,7 +196,7 @@ def _cmd_clip(args) -> int:
                   word_level=args.word_level,
                   label=True if (args.label_from_meta or args.label) else None,
                   label_text=args.label, hook=args.hook,
-                  aspect=args.aspect, out_dir=args.out)
+                  aspect=args.aspect, style=args.style, out_dir=args.out)
     if args.json:
         print(json.dumps({
             "path": str(result.path),
@@ -210,6 +210,7 @@ def _cmd_clip(args) -> int:
             "captions": result.captions,
             "label": result.label,
             "aspect": result.aspect,
+            "style": result.style,
             "export_dir": str(result.export_dir) if result.export_dir else None,
             "export_paths": [str(p) for p in result.export_paths],
             "card_path": str(result.card_path) if result.card_path else None,
@@ -737,6 +738,12 @@ def _build_parser() -> argparse.ArgumentParser:
                          "Reels/Shorts), square 1:1, wide 16:9; the library "
                          "master always keeps source dimensions "
                          "(default: clip.aspect setting)")
+    cl.add_argument("--style",
+                    choices=["plain", "keyword", "marker", "karaoke"],
+                    help="burned-caption rendering: keyword/marker color the "
+                         "agent-marked *word* in the caption file; karaoke "
+                         "lights words as spoken (needs --word-level) "
+                         "(default: clip.style setting)")
     cl.add_argument("--out", help="working folder: copy master + sidecars there "
                                   "(burn derivatives land only there); "
                                   "default: clip.export_dir setting")
