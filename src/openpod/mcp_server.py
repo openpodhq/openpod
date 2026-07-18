@@ -41,7 +41,10 @@ def build_server():
               confirmed: bool = False, asr: str = "auto") -> dict:
         """Ingest a podcast/RSS/YouTube/Spotify/Apple link (or local file)
         into the local library: transcribe, extract key ideas + a navigable
-        TOC, and write transcript.json / ideas.md / briefing.md. Returns the
+        TOC, and write transcript.json / transcript.md / ideas.md /
+        briefing.md. transcript.md is the human-readable view — reflowed
+        paragraphs, chaptered, a deep-link badge per paragraph — point the
+        user at it when they want to skim rather than ask. Returns the
         entry id, key ideas with deep-links, and the TOC so you can author
         the briefing.
 

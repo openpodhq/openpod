@@ -58,6 +58,10 @@ class LibraryEntry:
         return self.dir / "transcript.json"
 
     @property
+    def transcript_md_path(self) -> Path:
+        return self.dir / "transcript.md"
+
+    @property
     def briefing_path(self) -> Path:
         return self.dir / "briefing.md"
 
@@ -124,6 +128,14 @@ class LibraryEntry:
             json.dumps(transcript.to_dict(), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+
+    def write_transcript_md(self, markdown: str) -> Path:
+        """The rendered reading view (transcript_md.py). Machine-authored,
+        overwritten wholesale on re-catch — no marker-block contract, there
+        is no user prose to protect."""
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.transcript_md_path.write_text(markdown, encoding="utf-8")
+        return self.transcript_md_path
 
     # -- segments ------------------------------------------------------------ #
 

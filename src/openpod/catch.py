@@ -89,6 +89,16 @@ def catch(link: str, *, workspace: Optional[Workspace] = None,
     entry.write_meta(source, **extra)
     entry.write_transcript(transcript)
 
+    # The reading view, in the same pass, from the same in-memory objects —
+    # never written without transcript.json (transcript_md.py).
+    from .transcript_md import render_transcript_md
+
+    entry.write_transcript_md(render_transcript_md(
+        transcript, source=source, chapters=chapters,
+        episode_key=identity.episode_key if identity else None,
+        show=entry.show(), title=entry.title(),
+    ))
+
     ideas = _briefing.extract_ideas(transcript, source, k=k_ideas)
     _segments.annotate(ideas, segments, source, chapters=chapters)
     toc = _briefing.build_toc(transcript, source, structure=segments)

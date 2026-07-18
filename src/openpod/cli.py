@@ -569,6 +569,14 @@ def _cmd_reindex(args) -> int:
     return 0
 
 
+def _cmd_render(args) -> int:
+    from .transcript_md import render_entry
+
+    path = render_entry(args.entry, workspace=_ws(args))
+    print(f"transcript.md: {theme.path(str(path))}")
+    return 0
+
+
 def _cmd_sync(args) -> int:
     from . import sync as sync_mod
 
@@ -842,6 +850,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
     ri = sub.add_parser("reindex", help="rebuild the search index from artifacts")
     ri.set_defaults(func=_cmd_reindex)
+
+    rn = sub.add_parser(
+        "render",
+        help="re-render transcript.md from transcript.json — no re-fetch, "
+             "no re-transcription (picks up renderer improvements)")
+    rn.add_argument("entry", help="entry id (show/episode)")
+    rn.set_defaults(func=_cmd_render)
 
     sy = sub.add_parser(
         "sync",

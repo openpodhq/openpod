@@ -19,8 +19,9 @@ from typing import Optional
 from .config import Workspace
 
 # What openpod primitives actually write into an entry directory.
-_ENTRY_FILES = {"meta.json", "transcript.json", "briefing.md", "ideas.md",
-                "notes.md", "summary.md", "listened.json"}
+_ENTRY_FILES = {"meta.json", "transcript.json", "transcript.md",
+                "briefing.md", "ideas.md", "notes.md", "summary.md",
+                "listened.json"}
 _ENTRY_DIRS = {"clips"}
 # ...and into clips/: media + metadata + card + caption sidecars.
 _CLIP_SUFFIXES = {".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac",

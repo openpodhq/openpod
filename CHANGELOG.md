@@ -25,6 +25,20 @@ All notable changes to OpenPod are documented here. Format loosely follows
   `aspect` on MCP clip. Also fixed: a video file passed via `audio_path`
   now counts as video.
 
+### Added
+- **`transcript.md` — the reading view of every transcript.** Written by
+  `catch` next to `transcript.json`, from the same pass: cues reflowed into
+  ~20–42s paragraphs (sentence-boundary merging; speaker changes, chapter
+  boundaries, and long pauses break unconditionally), chapters as `##`
+  headings so the host editor's outline pane becomes the chapter rail, and
+  one blue `▸ m:ss` badge per paragraph deep-linking the player at that
+  moment — reference-style, so the link table pools at the bottom and the
+  raw file stays readable. Byte-identical for identical input (safe in
+  git); overwritten wholesale on re-catch; entries that can't link (no
+  feed/guid/episode-key) degrade to plain `` `▸ m:ss` `` badges instead of
+  dead links. New `openpod render <entry>` re-renders it from the existing
+  `transcript.json` — no re-fetch, no re-transcription.
+
 ### Changed
 - **Share card: the blue `▸ m:ss` badge is the deep link itself** — the
   "open at m:ss in the episode" caption is gone. The signature is always
