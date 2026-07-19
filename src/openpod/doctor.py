@@ -42,19 +42,29 @@ def check(workspace: Optional[Workspace] = None, *, fix: bool = False) -> dict:
     return report
 
 
+# How to get a caption-capable ffmpeg — kept in step with the clip warning
+# and the README install section so all three point to the same fix.
+_FFMPEG_FIX = ("install a libass/drawtext-enabled ffmpeg — the default macOS "
+               "`brew install ffmpeg` is a minimal build, use `ffmpeg-full`; "
+               "see the README install section")
+
+
 def _ffmpeg_report() -> dict:
     from .asr import ffmpeg_capabilities
 
     caps = ffmpeg_capabilities()
     notes = []
     if not caps["ffmpeg"]:
-        notes.append("ffmpeg not on PATH — clip and burn-in unavailable")
+        notes.append("ffmpeg not on PATH — clip and burn-in unavailable; "
+                     "install ffmpeg (see the README install section)")
     else:
         if not caps["subtitles"]:
             notes.append("no subtitles filter (libass): caption burn-in "
-                         "unavailable; soft sidecars (.srt/.vtt) still work")
+                         "unavailable; soft sidecars (.srt/.vtt) still work. "
+                         f"Fix: {_FFMPEG_FIX}")
         if not caps["drawtext"]:
-            notes.append("no drawtext filter: label burn-in unavailable")
+            notes.append("no drawtext filter: label burn-in unavailable. "
+                         f"Fix: {_FFMPEG_FIX}")
     return {**caps, "notes": notes}
 
 

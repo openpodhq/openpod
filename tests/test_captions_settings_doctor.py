@@ -138,6 +138,20 @@ def test_doctor_reports_ffmpeg_and_settings(workspace):
     assert report["settings"]["effective"]["clip"]["captions"] == "off"
 
 
+def test_doctor_ffmpeg_note_prints_the_fix(workspace, monkeypatch):
+    """A libass-less ffmpeg: doctor must not just report the gap — it points
+    to the fix, in step with the clip warning and the README."""
+    import openpod.asr as asr
+    monkeypatch.setattr(asr, "ffmpeg_capabilities",
+                        lambda *a, **k: {"ffmpeg": True, "subtitles": False,
+                                         "drawtext": False})
+    notes = check(workspace)["ffmpeg"]["notes"]
+    blob = " ".join(notes)
+    assert "libass" in blob
+    assert "ffmpeg-full" in blob                 # the concrete fix
+    assert "README install section" in blob
+
+
 # -- clip presentation layer -------------------------------------------------- #
 
 def test_clip_soft_captions_and_export_dir(workspace, vtt_file, tiny_wav_file, tmp_path):
