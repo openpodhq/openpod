@@ -85,6 +85,31 @@ def test_srt_roundtrip(workspace, vtt_file):
     assert to_vtt(lines).startswith("WEBVTT")
 
 
+def test_to_srt_rtl_wraps_each_visual_line():
+    from openpod.captions import CaptionLine, _RLE, _PDF
+    lines = [CaptionLine(start=0.0, end=2.0, text="API חדש"),
+             CaptionLine(start=2.0, end=4.0, text="שורה\nעם המשך")]
+    body = [l for l in to_srt(lines, rtl=True).splitlines()
+            if l and "-->" not in l and not l.isdigit()]
+    assert len(body) == 3                              # cue1 (1 line) + cue2 (2)
+    assert all(l.startswith(_RLE) and l.endswith(_PDF) for l in body)
+    assert _RLE in to_vtt(lines, rtl=True)
+    assert _RLE not in to_srt(lines)                   # default LTR: no marks
+
+
+def test_export_captions_marks_rtl_source_sidecar(workspace, vtt_file):
+    from openpod.captions import _RLE
+    entry = _entry(workspace, vtt_file)
+    tr = entry.read_transcript(); tr.language = "he"; entry.write_transcript(tr)
+    r = export_captions(entry, 0, 25)
+    assert r.language == "he"
+    assert _RLE in r.path.read_text(encoding="utf-8")  # sidecar pins RTL base
+    # an English-source sidecar stays mark-free (no regression)
+    tr.language = "en"; entry.write_transcript(tr)
+    r2 = export_captions(entry, 0, 25)
+    assert _RLE not in r2.path.read_text(encoding="utf-8")
+
+
 # -- speaker label from structure ------------------------------------------- #
 
 def test_speaker_label_from_meta():

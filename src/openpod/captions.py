@@ -151,7 +151,11 @@ def export_captions(entry, start: float, end: float, *,
     dest.mkdir(parents=True, exist_ok=True)
     suffix = f".{source_lang}" if source_lang else ""
     path = dest / f"{int(start)}-{int(end)}{suffix}.{fmt}"
-    path.write_text(to_vtt(lines) if fmt == "vtt" else to_srt(lines),
+    # The sidecar carries source-language text; pin RTL base direction so
+    # players don't flip a line that opens with a Latin word/number.
+    rtl = is_rtl(source_lang)
+    path.write_text(to_vtt(lines, rtl=rtl) if fmt == "vtt"
+                    else to_srt(lines, rtl=rtl),
                     encoding="utf-8")
 
     # Unknown source language + explicit target still flags translation:
@@ -178,6 +182,21 @@ _RTL_LANGS = {"he", "iw", "ar", "fa", "ur", "yi"}
 
 def is_rtl(lang: Optional[str]) -> bool:
     return bool(lang) and lang.split("-")[0].lower() in _RTL_LANGS
+
+
+# Bidi controls for sidecar text. A soft .srt/.vtt line that opens with a
+# Latin word or number keeps RTL base direction only if the file says so —
+# players otherwise run the bidi algorithm from the first strong character and
+# flip the whole line. Wrapping each visual line in RLE…PDF pins the base to
+# RTL (the burn does the same in ass.py; duplicated here, not imported, to
+# avoid a captions<-ass cycle).
+_RLE = chr(0x202b)   # RIGHT-TO-LEFT EMBEDDING
+_PDF = chr(0x202c)   # POP DIRECTIONAL FORMATTING
+
+
+def _rtl_lines(text: str) -> str:
+    """Wrap each visual line of a cue in RLE…PDF (see ``_RLE``)."""
+    return "\n".join(_RLE + ln + _PDF for ln in text.split("\n"))
 
 
 _sentence_end = re.compile(r"[.!?…]+[\"')\]]?$")
@@ -324,17 +343,19 @@ def _ts_vtt(seconds: float) -> str:
     return _ts_srt(seconds).replace(",", ".")
 
 
-def to_srt(lines: list) -> str:
+def to_srt(lines: list, *, rtl: bool = False) -> str:
     blocks = []
     for i, l in enumerate(lines, 1):
-        blocks.append(f"{i}\n{_ts_srt(l.start)} --> {_ts_srt(l.end)}\n{l.text}\n")
+        text = _rtl_lines(l.text) if rtl else l.text
+        blocks.append(f"{i}\n{_ts_srt(l.start)} --> {_ts_srt(l.end)}\n{text}\n")
     return "\n".join(blocks)
 
 
-def to_vtt(lines: list) -> str:
+def to_vtt(lines: list, *, rtl: bool = False) -> str:
     blocks = ["WEBVTT\n"]
     for l in lines:
-        blocks.append(f"{_ts_vtt(l.start)} --> {_ts_vtt(l.end)}\n{l.text}\n")
+        text = _rtl_lines(l.text) if rtl else l.text
+        blocks.append(f"{_ts_vtt(l.start)} --> {_ts_vtt(l.end)}\n{text}\n")
     return "\n".join(blocks)
 
 

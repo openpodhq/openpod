@@ -71,9 +71,12 @@ All notable changes to OpenPod are documented here. Format loosely follows
   left-to-right base direction and the whole line reversed — right-aligned
   text sliding left, punctuation on the wrong side. Every burned line is now
   wrapped, per visual row, in RLE…PDF bidi marks that pin the base direction
-  to RTL, so Latin/number runs render as correct LTR islands. RTL burns also
-  default to a Hebrew-capable face (Rubik) instead of Arial when no
-  `caption_style.font` is set — scoped to RTL, so the LTR look is unchanged;
+  to RTL, so Latin/number runs render as correct LTR islands. The same marks
+  now ride in the soft `.srt`/`.vtt` sidecar too (for RTL-source captions), so
+  players that run their own bidi don't flip it either; the burn strips any
+  such marks before re-rendering, so a sidecar it reads is never double-wrapped.
+  RTL burns also default to a Hebrew-capable face (Rubik) instead of Arial when
+  no `caption_style.font` is set — scoped to RTL, so the LTR look is unchanged;
   the note names Rubik/Heebo/Assistant if glyphs are still missing.
 - **No more crash on a stdout that can't encode the brand glyphs.**
   `openpod search` (and any other command) printed nothing and exited 1 on

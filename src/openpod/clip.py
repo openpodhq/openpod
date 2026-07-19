@@ -505,6 +505,14 @@ def _hex_to_ass(hex_color: str, alpha: str = "00") -> str:
     return hex_to_ass(hex_color, alpha)
 
 
+# Unicode bidi formatting chars. Stripped from caption text before the burn
+# re-applies its own RTL wrapping, so a sidecar that already carries marks
+# (export_captions adds them for players) isn't double-wrapped.
+_BIDI_STRIP = dict.fromkeys(
+    [0x200e, 0x200f, 0x061c, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e,
+     0x2066, 0x2067, 0x2068, 0x2069], None)
+
+
 def _write_burn_ass(result: ClipResult, captions_path, dest: Path, *,
                     style: dict, style_mode: str,
                     words: Optional[list], rtl: bool = False) -> Path:
@@ -514,7 +522,8 @@ def _write_burn_ass(result: ClipResult, captions_path, dest: Path, *,
     from .ass import build_ass
 
     cues = tx.load_file(Path(captions_path)).cues
-    lines = [(c.start, c.end if c.end is not None else c.start + 2.0, c.text)
+    lines = [(c.start, c.end if c.end is not None else c.start + 2.0,
+              c.text.translate(_BIDI_STRIP))
              for c in cues]
     ass_path = dest / f"{result.path.stem}.ass"
     ass_path.write_text(

@@ -262,5 +262,6 @@ def test_clip_burn_threads_rtl_through_for_hebrew(workspace, vtt_file,
     ass = next(p for p in r.export_paths if p.suffix == ".ass")
     doc = ass.read_text(encoding="utf-8")
     assert _RLE in doc                              # base direction forced
+    assert (_RLE + _RLE) not in doc                 # sidecar marks stripped: no double-wrap
     assert f"Style: OpenPod,{_RTL_FONT}," in doc    # RTL default font applied
     assert "forced right-to-left" in (r.capability_note or "")
