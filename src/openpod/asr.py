@@ -37,7 +37,7 @@ def transcribe(audio_path: str, *, model: str = "base",
     except ImportError as e:  # pragma: no cover - depends on env
         raise DependencyMissing(
             "Local transcription needs faster-whisper. Install it with:\n"
-            "    pip install 'openpod[asr]'\n"
+            '    pip install "openpod[asr]"\n'
             "or supply a transcript directly with --transcript."
         ) from e
 
@@ -95,7 +95,7 @@ def download_audio(url: str, *, dest_dir: Optional[str] = None) -> str:
     except ImportError as e:
         raise DependencyMissing(
             "Downloading from this source needs yt-dlp. Install it with:\n"
-            "    pip install 'openpod[youtube]'"
+            '    pip install "openpod[youtube]"'
         ) from e
 
     out_tmpl = str(Path(dest_dir) / "audio.%(ext)s")

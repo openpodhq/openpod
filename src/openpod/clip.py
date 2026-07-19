@@ -147,7 +147,9 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
         raise ValueError("end must be greater than start")
     if not has_ffmpeg():
         raise RuntimeError(
-            "clip requires ffmpeg on your PATH. Install it (e.g. `brew install ffmpeg`)."
+            "clip requires ffmpeg on your PATH. Install it: macOS "
+            "`brew install ffmpeg` / Windows `winget install Gyan.FFmpeg` / "
+            "Debian-Ubuntu `sudo apt install ffmpeg`."
         )
 
     ws = (workspace or Workspace())
@@ -578,8 +580,10 @@ def _burn(result: ClipResult, captions_path: Optional[str],
             ass_path = _write_burn_ass(result, captions_path, dest,
                                        style=style, style_mode=style_mode,
                                        words=words)
-            esc_path = str(ass_path).replace("'", r"\'")
-            filters.append(f"subtitles='{esc_path}'")
+            # The filtergraph parser eats drive colons and backslashes, so an
+            # absolute path breaks on Windows. The .ass name is slug-safe
+            # ([0-9a-z-]); pass it bare and run ffmpeg from the export dir.
+            filters.append(f"subtitles={ass_path.name}")
             from .captions import is_rtl
             lang = (result.captions or {}).get("requested_language") \
                 or (result.captions or {}).get("language")
@@ -620,7 +624,8 @@ def _burn(result: ClipResult, captions_path: Optional[str],
     social = dest / f"{result.path.stem}-social{result.path.suffix}"
     cmd = ["ffmpeg", "-y", "-i", str(result.path), "-vf", ",".join(filters),
            "-c:a", "copy", str(social)]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # cwd anchors the bare subtitles filename; every other path is absolute.
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=str(dest))
     if proc.returncode != 0:
         result.capability_note = _append_note(
             result.capability_note,

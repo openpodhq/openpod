@@ -77,7 +77,7 @@ def render_card_png(html_path: Path, out_path: Path, *, scale: int = 2) -> bool:
     Returns ``True`` on success, ``False`` whenever a renderer isn't
     available or it fails for any reason — this must never block or crash
     the core `clip` flow. Requires the ``card-png`` extra
-    (``pip install 'openpod[card-png]'``).
+    (``pip install "openpod[card-png]"``).
     """
     try:
         from playwright.sync_api import sync_playwright

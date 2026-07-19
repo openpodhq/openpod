@@ -124,7 +124,7 @@ def _captions(video_id: str, languages: list[str]
         from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
     except ImportError:
         return None, "permanent", ("youtube-transcript-api not installed "
-                                   "(pip install 'openpod[youtube]')")
+                                   '(pip install "openpod[youtube]")')
     try:
         # API surface differs across versions; support both the classic
         # classmethod and the newer instance API.

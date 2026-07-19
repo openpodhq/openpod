@@ -243,7 +243,7 @@ def _cmd_clip(args) -> int:
             print(f"  card image: {theme.path(str(result.card_png_path))}")
         else:
             print("  card image: to get a PNG, open the card in a browser and "
-                  "screenshot it — or `pip install 'openpod[card-png]'`")
+                  'screenshot it — or `pip install "openpod[card-png]"`')
     return 0
 
 
@@ -598,8 +598,9 @@ def _cmd_sync(args) -> int:
         who = f" as {creds.email}" if creds.email else ""
         print(theme.ok(f"logged in{who}"))
         print(f"  token stored: {theme.path(str(path))}")
-        print("  note: this file holds a secret bearer token (chmod 600, "
-              "git-ignored). Never commit or share it.")
+        print("  note: this file holds a secret bearer token (owner-only "
+              "permissions where the OS supports it, git-ignored). "
+              "Never commit or share it.")
         return 0
 
     # Default `sync push`: follows → entry-map → segments → transcripts.

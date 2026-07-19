@@ -286,7 +286,7 @@ def word_timings_for_clip(media_path, start: float, end: float, *,
     except ImportError as e:
         raise DependencyMissing(
             "Word-level captions need faster-whisper: "
-            "pip install 'openpod[asr]'") from e
+            'pip install "openpod[asr]"') from e
     if not has_ffmpeg():
         raise DependencyMissing("Word-level captions need ffmpeg on PATH.")
 

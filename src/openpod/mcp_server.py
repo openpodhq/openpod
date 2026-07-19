@@ -9,7 +9,7 @@ returns transcript, structure, citations, and deep-links written into the
 user's workspace.
 
 Run it:  ``openpod-mcp``  (or ``python -m openpod.mcp_server``)
-Requires the ``mcp`` extra:  ``pip install 'openpod[mcp]'``.
+Requires the ``mcp`` extra:  ``pip install "openpod[mcp]"``.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def build_server():
     except ImportError as e:  # pragma: no cover - depends on env
         raise RuntimeError(
             "The MCP server needs the 'mcp' package. Install with:\n"
-            "    pip install 'openpod[mcp]'"
+            '    pip install "openpod[mcp]"'
         ) from e
 
     mcp = FastMCP("openpod")

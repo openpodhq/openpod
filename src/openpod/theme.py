@@ -66,7 +66,43 @@ def _style_enabled() -> bool:
         return False
     if not sys.stdout.isatty():
         return False
-    return True
+    return _vt_capable()
+
+
+_vt_state: Optional[bool] = None
+
+
+def _vt_capable() -> bool:
+    """ANSI is only safe once the console actually interprets it. Always
+    true on a POSIX TTY; on Windows the legacy console prints raw escapes
+    unless VT processing is switched on, so probe (and enable) it once."""
+    global _vt_state
+    if _vt_state is None:
+        _vt_state = sys.platform != "win32" or _enable_windows_vt()
+    return _vt_state
+
+
+def _enable_windows_vt() -> bool:  # pragma: no cover - Windows only
+    # VT-native hosts announce themselves; no console-mode surgery needed.
+    if (os.environ.get("WT_SESSION")            # Windows Terminal
+            or os.environ.get("ConEmuANSI") == "ON"
+            or os.environ.get("ANSICON")
+            or os.environ.get("TERM")):         # mintty / msys / cygwin
+        return True
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        vt_flag = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        if mode.value & vt_flag:
+            return True
+        return bool(kernel32.SetConsoleMode(handle, mode.value | vt_flag))
+    except Exception:
+        return False
 
 
 def _theme_variant() -> str:
@@ -84,6 +120,10 @@ def _color_tier() -> str:
         return "truecolor"
     if "256color" in os.environ.get("TERM", ""):
         return "256"
+    if sys.platform == "win32":
+        # No COLORTERM/TERM convention on Windows; the _style_enabled gate
+        # already proved VT works, and VT consoles there are 24-bit.
+        return "truecolor"
     return "none"
 
 
