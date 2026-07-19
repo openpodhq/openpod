@@ -507,7 +507,7 @@ def _hex_to_ass(hex_color: str, alpha: str = "00") -> str:
 
 def _write_burn_ass(result: ClipResult, captions_path, dest: Path, *,
                     style: dict, style_mode: str,
-                    words: Optional[list]) -> Path:
+                    words: Optional[list], rtl: bool = False) -> Path:
     """Build the ``.ass`` the burn renders — part of the export package, so
     the exact styling that produced the derivative is inspectable."""
     from . import transcript as tx
@@ -518,7 +518,7 @@ def _write_burn_ass(result: ClipResult, captions_path, dest: Path, *,
              for c in cues]
     ass_path = dest / f"{result.path.stem}.ass"
     ass_path.write_text(
-        build_ass(lines, style=style, mode=style_mode, words=words),
+        build_ass(lines, style=style, mode=style_mode, words=words, rtl=rtl),
         encoding="utf-8")
     result.export_paths.append(ass_path)
     return ass_path
@@ -572,6 +572,10 @@ def _burn(result: ClipResult, captions_path: Optional[str],
         filters.append(ASPECT_FILTERS[aspect])
     if captions_path:
         if caps["subtitles"]:
+            from .captions import is_rtl
+            lang = (result.captions or {}).get("requested_language") \
+                or (result.captions or {}).get("language")
+            rtl = is_rtl(lang)
             if style_mode == "karaoke" and not words:
                 result.capability_note = _append_note(
                     result.capability_note,
@@ -579,20 +583,19 @@ def _burn(result: ClipResult, captions_path: Optional[str],
                     "openpod[asr]) — burned with keyword styling instead")
             ass_path = _write_burn_ass(result, captions_path, dest,
                                        style=style, style_mode=style_mode,
-                                       words=words)
+                                       words=words, rtl=rtl)
             # The filtergraph parser eats drive colons and backslashes, so an
             # absolute path breaks on Windows. The .ass name is slug-safe
             # ([0-9a-z-]); pass it bare and run ffmpeg from the export dir.
             filters.append(f"subtitles={ass_path.name}")
-            from .captions import is_rtl
-            lang = (result.captions or {}).get("requested_language") \
-                or (result.captions or {}).get("language")
-            if is_rtl(lang):
+            if rtl:
                 result.capability_note = _append_note(
                     result.capability_note,
-                    "RTL captions: check the burned frames (verify.png) — "
-                    "the default font may lack Hebrew/Arabic glyphs; install "
-                    "a dedicated face if boxes appear")
+                    "RTL captions: base direction forced right-to-left, so "
+                    "Latin words and numbers stay as correct islands. If "
+                    "Hebrew/Arabic shows as boxes the font lacks the glyphs — "
+                    "install a Hebrew face (Rubik/Heebo/Assistant); check "
+                    "verify.png")
         else:
             result.capability_note = _append_note(
                 result.capability_note,

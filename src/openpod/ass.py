@@ -47,6 +47,20 @@ _PLAY_RES = (384, 288)
 _FONT_SIZE = 16
 _MARGIN_V = 40
 
+# RTL: pin each visual line to right-to-left base direction. A line that opens
+# with a Latin word or number ("Claude Max", "API", "STEM") otherwise inherits
+# LTR base direction and the whole line flips — Hebrew ends up left-aligned
+# with punctuation on the wrong side. Wrapping each visual line in RLE…PDF
+# forces the base to RTL, so Latin/number runs stay as correct LTR islands.
+# Both are zero-width, non-rendering formatting characters.
+_RLE = chr(0x202b)   # RIGHT-TO-LEFT EMBEDDING
+_PDF = chr(0x202c)   # POP DIRECTIONAL FORMATTING
+# Default face for RTL burns when the user hasn't set one (Arial's Hebrew is
+# poor-to-absent). Free, broad Hebrew coverage; if it isn't installed libass
+# falls back to a system Hebrew face — the clip/doctor notes point users at
+# Rubik/Heebo/Assistant.
+_RTL_FONT = "Rubik"
+
 
 def parse_keywords(text: str) -> tuple[str, list[tuple[int, int]]]:
     """Strip ``*…*`` marks, returning clean text + keyword spans as
@@ -98,12 +112,14 @@ def _line_words(words: list[dict], start: float, end: float) -> list[dict]:
 
 def build_ass(lines: list[tuple[float, float, str]], *, style: dict,
               mode: str = "plain",
-              words: Optional[list[dict]] = None) -> str:
+              words: Optional[list[dict]] = None,
+              rtl: bool = False) -> str:
     """Render caption lines to a complete ASS document.
 
     ``lines`` are clip-relative ``(start, end, text)``; ``words`` is the
-    clip-relative word-level track (karaoke only). Deterministic: same
-    input, same bytes.
+    clip-relative word-level track (karaoke only). ``rtl`` pins every line to
+    right-to-left base direction (see ``_RLE``) and, when the style names no
+    font, picks an RTL-capable default. Deterministic: same input, same bytes.
     """
     if mode not in STYLES:
         raise ValueError(f"caption style must be one of {STYLES}, got {mode!r}")
@@ -127,7 +143,7 @@ def build_ass(lines: list[tuple[float, float, str]], *, style: dict,
     secondary = primary if mode == "karaoke" else keyword
     border_style = 4 if boxed else 1
     alignment = 8 if style.get("position") == "top" else 2
-    font = style.get("font") or "Arial"
+    font = style.get("font") or (_RTL_FONT if rtl else "Arial")
 
     L = [
         "[Script Info]",
@@ -165,9 +181,19 @@ def build_ass(lines: list[tuple[float, float, str]], *, style: dict,
                                   primary=primary)
             else:
                 text = _esc(body)
+        if rtl:
+            text = _bidi_wrap(text)
         L.append(f"Dialogue: 0,{_ts(start)},{_ts(end)},OpenPod,,0,0,0,,{text}")
 
     return "\n".join(L) + "\n"
+
+
+def _bidi_wrap(text: str) -> str:
+    """Pin each visual line to RTL base direction: wrap every ``\\N``-separated
+    segment in RLE…PDF (see ``_RLE``). Inline ``{\\…}`` override tags stay
+    intact — libass strips them before running bidi, so the marks land on the
+    visible text and Latin/number runs render as correct LTR islands."""
+    return r"\N".join(_RLE + seg + _PDF for seg in text.split(r"\N"))
 
 
 def _highlight(clean: str, spans: list[tuple[int, int]], *,

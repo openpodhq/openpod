@@ -193,3 +193,74 @@ def test_invalid_style_rejected(workspace, vtt_file, tiny_wav_file):
     with pytest.raises(ValueError):
         clip(entry.entry_id, 5, 11, workspace=workspace,
              audio_path=str(tiny_wav_file), style="disco")
+
+
+# -- RTL: base direction + font (all users, not just one clip) --------------- #
+
+def test_rtl_pins_each_visual_line_to_rtl_base():
+    """A line opening with a Latin word must not flip. Each \\N segment is
+    wrapped in RLE…PDF so the base direction is RTL and Latin/number runs
+    stay as correct LTR islands."""
+    from openpod.ass import _RLE, _PDF
+    from openpod.captions import FORCE_BREAK
+    lines = [(0.0, 3.0, "Claude Max נותן גישה"),
+             (3.0, 6.0, f"יש API {FORCE_BREAK} וגם STEM")]
+    doc = build_ass(lines, style=STYLE, mode="plain", rtl=True)
+    texts = [ln.split(",", 9)[-1] for ln in doc.splitlines()
+             if ln.startswith("Dialogue")]
+    # line 1: single visual segment, wrapped exactly once
+    assert texts[0].startswith(_RLE) and texts[0].endswith(_PDF)
+    assert texts[0].count(_RLE) == 1
+    # line 2: forced break -> two segments, EACH independently wrapped
+    segs = texts[1].split(r"\N")
+    assert len(segs) == 2
+    assert all(s.startswith(_RLE) and s.endswith(_PDF) for s in segs)
+    # LTR from the same input carries zero marks (byte-for-byte no regression)
+    ltr = build_ass(lines, style=STYLE, mode="plain", rtl=False)
+    assert _RLE not in ltr and _PDF not in ltr
+
+
+def test_rtl_wrap_keeps_keyword_override_tags():
+    """The bidi marks sit on the outside; inline {\\c} keyword overrides stay
+    intact inside the wrapped run."""
+    from openpod.ass import _RLE, _PDF
+    doc = build_ass([(0.0, 3.0, "מודל *Claude* חדש")], style=STYLE,
+                    mode="keyword", rtl=True)
+    text = [ln.split(",", 9)[-1] for ln in doc.splitlines()
+            if ln.startswith("Dialogue")][0]
+    assert text.startswith(_RLE) and text.endswith(_PDF)
+    assert "\\c" in text                       # keyword color override preserved
+
+
+def test_rtl_default_font_is_scoped_to_rtl():
+    from openpod.ass import _RTL_FONT
+    head = lambda doc: doc.split("[Events]")[0]
+    # RTL + unset font -> RTL default; LTR + unset font -> Arial (unchanged)
+    assert f"Style: OpenPod,{_RTL_FONT}," in head(
+        build_ass([(0.0, 1.0, "שלום")], style=STYLE, rtl=True))
+    assert "Style: OpenPod,Arial," in head(
+        build_ass([(0.0, 1.0, "hello")], style=STYLE, rtl=False))
+    # an explicit caption_style.font wins even in RTL
+    assert "Style: OpenPod,Heebo," in head(
+        build_ass([(0.0, 1.0, "שלום")], style={**STYLE, "font": "Heebo"}, rtl=True))
+
+
+def test_clip_burn_threads_rtl_through_for_hebrew(workspace, vtt_file,
+                                                  tmp_path, monkeypatch):
+    """End-to-end: a Hebrew-labelled caption makes clip() write an RTL .ass
+    (bidi marks + RTL font) and note the forced direction."""
+    from openpod.ass import _RLE, _RTL_FONT
+    _fake_ffmpeg(monkeypatch, tmp_path)
+    workspace.set_setting("locale.preferred_language", "he")
+    entry = catch("https://example.com/ep1", workspace=workspace,
+                  kind="podcast", transcript_path=str(vtt_file)).entry
+    tr = entry.read_transcript(); tr.language = "he"; entry.write_transcript(tr)
+    video = tmp_path / "clip.mp4"; video.write_bytes(b"fake")   # engage burn path
+    r = clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(video), captions="burn",
+             out_dir=str(tmp_path / "ex"))
+    ass = next(p for p in r.export_paths if p.suffix == ".ass")
+    doc = ass.read_text(encoding="utf-8")
+    assert _RLE in doc                              # base direction forced
+    assert f"Style: OpenPod,{_RTL_FONT}," in doc    # RTL default font applied
+    assert "forced right-to-left" in (r.capability_note or "")

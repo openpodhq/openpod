@@ -66,6 +66,15 @@ All notable changes to OpenPod are documented here. Format loosely follows
   `brew install ffmpeg` is now a minimal build (use `ffmpeg-full`).
 
 ### Fixed
+- **RTL captions no longer flip.** A burned Hebrew/Arabic line that opened
+  with a Latin word or number ("Claude Max", "API", "STEM") inherited
+  left-to-right base direction and the whole line reversed — right-aligned
+  text sliding left, punctuation on the wrong side. Every burned line is now
+  wrapped, per visual row, in RLE…PDF bidi marks that pin the base direction
+  to RTL, so Latin/number runs render as correct LTR islands. RTL burns also
+  default to a Hebrew-capable face (Rubik) instead of Arial when no
+  `caption_style.font` is set — scoped to RTL, so the LTR look is unchanged;
+  the note names Rubik/Heebo/Assistant if glyphs are still missing.
 - **No more crash on a stdout that can't encode the brand glyphs.**
   `openpod search` (and any other command) printed nothing and exited 1 on
   a cp1252 or ascii stdout — a Windows redirect, a POSIX/C locale in CI.
