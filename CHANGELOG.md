@@ -56,6 +56,14 @@ All notable changes to OpenPod are documented here. Format loosely follows
 - **Share card: the blue `▸ m:ss` badge is the deep link itself** — the
   "open at m:ss in the episode" caption is gone. The signature is always
   blue and always live; it doesn't need a label saying so.
+- **"Captions not burned" now says so — loudly and first.** When ffmpeg
+  lacks libass, `clip` still can't burn styled captions (it writes a plain
+  `.srt` sidecar players render in their own generic style). That degrade
+  note now *leads* the `capability_note` instead of trailing behind minor
+  notes, names the cause, and points to the fix. The README install section
+  documents the `libass`/`drawtext` requirement and how to get a
+  caption-capable ffmpeg per platform — notably that the default macOS
+  `brew install ffmpeg` is now a minimal build (use `ffmpeg-full`).
 
 ### Fixed
 - **No more crash on a stdout that can't encode the brand glyphs.**

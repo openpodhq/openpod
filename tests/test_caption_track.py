@@ -158,3 +158,35 @@ def test_burn_gate_rejects_low_coverage_file(workspace, vtt_file,
              captions_file=str(bad), out_dir=str(tmp_path / "x"))
     assert "refusing to burn" in r.capability_note
     assert "missing" in r.capability_note
+
+
+def test_append_note_lead_puts_critical_first():
+    from openpod.clip import _append_note
+    assert _append_note(None, "A", lead=True) == "A"
+    assert _append_note("B", "A") == "B; A"             # default: appends
+    assert _append_note("B", "A", lead=True) == "A; B"  # lead: prepends
+
+
+def test_missing_libass_warning_leads_and_is_actionable(monkeypatch):
+    """No libass -> captions can't burn. The degrade must LEAD the
+    capability_note (not hide behind minor notes) and point to the fix."""
+    from pathlib import Path
+    import openpod.asr as asr
+    from openpod.clip import ClipResult, _burn
+
+    monkeypatch.setattr(asr, "ffmpeg_capabilities",
+                        lambda: {"ffmpeg": True, "subtitles": False,
+                                 "drawtext": False})
+
+    r = ClipResult(path=Path("/tmp/master.mp4"), start=0.0, end=6.0,
+                   quote="q", deeplink=None, has_video=True)
+    r.capability_note = "sidecar written line-by-line"   # a pre-existing minor note
+
+    out = _burn(r, captions_path="/tmp/x.srt", label=None, dest=Path("/tmp"))
+
+    assert out is None                                    # nothing burned
+    assert r.capability_note.startswith("CAPTIONS NOT BURNED")   # it leads
+    assert "libass" in r.capability_note
+    assert "README install section" in r.capability_note
+    assert "openpod doctor" in r.capability_note
+    assert "sidecar written line-by-line" in r.capability_note   # prior note kept

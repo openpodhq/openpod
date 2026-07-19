@@ -148,6 +148,26 @@ pip install 'openpod[all]'          # everything
 
 `ffmpeg` on your `PATH` is required for `clip`.
 
+**Burned-in captions and the speaker name-plate additionally need an ffmpeg
+built with `libass` (the `subtitles` filter) and `drawtext`.** Without them
+`clip` still runs, but it skips the styled burn-in and writes a plain `.srt`
+sidecar instead — which players render in their own generic style, not the
+OpenPod caption look. Many stock builds omit these filters:
+
+- **macOS (Homebrew):** the default `brew install ffmpeg` is now a *minimal*
+  build with no libass/drawtext. Install the full formula — `brew install
+  ffmpeg-full` — then make it your `ffmpeg`: it's keg-only, so either prepend
+  it to `PATH` with `export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"` (in
+  your shell profile), or force-link it with `brew link --overwrite --force
+  ffmpeg-full`.
+- **Debian/Ubuntu:** `apt install ffmpeg` already includes libass and
+  drawtext — nothing extra needed.
+- **conda / other builds:** some (notably conda-forge) ship without libass;
+  if so, use a static build or your system ffmpeg for clipping.
+
+Run `openpod doctor` to see exactly what your ffmpeg can do — `subtitles` is
+libass (caption burn-in), `drawtext` is the label plate.
+
 ## Use it as a library
 
 ```python

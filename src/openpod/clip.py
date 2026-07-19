@@ -592,9 +592,15 @@ def _burn(result: ClipResult, captions_path: Optional[str],
         else:
             result.capability_note = _append_note(
                 result.capability_note,
-                "this ffmpeg build lacks the subtitles filter (libass) — "
-                "no captions were burned; the .srt sidecar is in the export "
-                "folder (run `openpod doctor` for the capability report)")
+                "CAPTIONS NOT BURNED — this ffmpeg has no libass (the "
+                "subtitles filter), so the styled burn-in was skipped and "
+                "only a plain .srt sidecar was written (players show it in "
+                "their own generic style, not the OpenPod caption look). "
+                "Install a libass-enabled ffmpeg — many stock builds, "
+                "including macOS `brew install ffmpeg`, omit it; see the "
+                "README install section — then re-cut. Run `openpod doctor` "
+                "for the capability report.",
+                lead=True)
     if label:
         if caps["drawtext"]:
             esc = label.replace("\\", r"\\").replace(":", r"\:").replace("'", r"\'")
@@ -668,8 +674,13 @@ def _update_clip_meta(meta_path: Path, **blocks) -> None:
                          encoding="utf-8")
 
 
-def _append_note(existing: Optional[str], note: str) -> str:
-    return f"{existing}; {note}" if existing else note
+def _append_note(existing: Optional[str], note: str, *, lead: bool = False) -> str:
+    """Join a degrade note onto the running capability_note. ``lead=True``
+    puts it first, so a critical "what you asked for didn't happen" note
+    (captions not burned) isn't buried behind minor ones."""
+    if not existing:
+        return note
+    return f"{note}; {existing}" if lead else f"{existing}; {note}"
 
 
 def _ffmpeg_cut(media: str, start: float, end: float, out: Path,
