@@ -19,10 +19,14 @@ If a change touches these, open an issue first.
 ## Dev setup
 
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -e '.[dev]'
+python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 pytest
 ```
+
+CI runs the suite on Linux, Windows, and macOS — keep changes portable
+(explicit `encoding="utf-8"` on text I/O, no POSIX-only permission
+assertions outside an `os.name == "posix"` gate, pathlib over string paths).
 
 The test suite must stay **fully offline** — no network calls, no model
 downloads. Use fixtures (see `tests/conftest.py`). Heavy/network dependencies

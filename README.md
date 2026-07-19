@@ -66,6 +66,8 @@ openpod-mcp
 }
 ```
 
+On Windows, JSON needs the backslashes escaped: `"OPENPOD_HOME": "C:\\Users\\you\\podcasts"`.
+
 Say *"catch me up on this episode"* and the agent runs `catch`, reads your local persona file, and writes a cited briefing back into your library — then hands you the path. Mid-conversation, no dashboard, no copy-paste.
 
 ## The four primitives
@@ -140,13 +142,13 @@ Want it on two machines? Put the tree in git or Dropbox yourself. OpenPod won't 
 
 ```bash
 pip install openpod                 # core: RSS ingest, local search, deep links, clip
-pip install 'openpod[youtube]'      # + YouTube captions & audio
-pip install 'openpod[asr]'          # + local Whisper transcription
-pip install 'openpod[mcp]'          # + the MCP server
-pip install 'openpod[all]'          # everything
+pip install "openpod[youtube]"      # + YouTube captions & audio
+pip install "openpod[asr]"          # + local Whisper transcription
+pip install "openpod[mcp]"          # + the MCP server
+pip install "openpod[all]"          # everything
 ```
 
-`ffmpeg` on your `PATH` is required for `clip`.
+`ffmpeg` on your `PATH` is required for `clip` — macOS: `brew install ffmpeg` · Windows: `winget install Gyan.FFmpeg` · Debian/Ubuntu: `sudo apt install ffmpeg`.
 
 **Burned-in captions and the speaker name-plate additionally need an ffmpeg
 built with `libass` (the `subtitles` filter) and `drawtext`.** Without them
@@ -204,8 +206,8 @@ Built by Yoav — building OpenPod in public.
 ```bash
 git clone https://github.com/openpodhq/openpod
 cd openpod
-python -m venv .venv && . .venv/bin/activate
-pip install -e '.[dev]'
+python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
 pytest
 ```
 
