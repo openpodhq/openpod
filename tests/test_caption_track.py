@@ -71,7 +71,7 @@ def test_clip_json_embeds_caption_track(workspace, vtt_file, tiny_wav_file):
              hook="LPU vs GPU in one line")
     meta_path = next(p for p in entry.clips_dir.glob("*.json")
                      if not p.name.endswith("card.json"))
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert meta["captions"]["phrases"]
     assert meta["captions"]["timing"] in ("cue", "approximate")
     assert "rtl" in meta["captions"]
@@ -112,7 +112,7 @@ def test_export_package_contents(workspace, vtt_file, tiny_wav_file, tmp_path):
     names = {p.name for p in r.export_paths}
     assert "deeplink.txt" not in names or (out / "deeplink.txt").exists()
     assert "label.json" in names
-    label = json.loads((out / "label.json").read_text())
+    label = json.loads((out / "label.json").read_text(encoding="utf-8"))
     assert label == {"label": "Jonathan Ross, Founder, Groq", "hook": "the hook"}
 
 

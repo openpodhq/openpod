@@ -42,8 +42,8 @@ def test_transcript_file_as_link_records_path_but_no_media(workspace, vtt_file):
 def test_two_local_files_are_two_entries(workspace, tmp_path, vtt_file):
     a = tmp_path / "alpha.vtt"
     b = tmp_path / "beta.vtt"
-    a.write_text(vtt_file.read_text(), encoding="utf-8")
-    b.write_text(vtt_file.read_text(), encoding="utf-8")
+    a.write_text(vtt_file.read_text(encoding="utf-8"), encoding="utf-8")
+    b.write_text(vtt_file.read_text(encoding="utf-8"), encoding="utf-8")
     ra = catch(str(a), workspace=workspace, kind="file")
     rb = catch(str(b), workspace=workspace, kind="file")
     assert ra.entry_id != rb.entry_id
@@ -57,7 +57,7 @@ def test_same_name_in_different_folders_does_not_merge(workspace, tmp_path,
     d1, d2 = tmp_path / "d1", tmp_path / "d2"
     d1.mkdir(), d2.mkdir()
     for d in (d1, d2):
-        (d / "interview.vtt").write_text(vtt_file.read_text(),
+        (d / "interview.vtt").write_text(vtt_file.read_text(encoding="utf-8"),
                                          encoding="utf-8")
     r1 = catch(str(d1 / "interview.vtt"), workspace=workspace, kind="file")
     r2 = catch(str(d2 / "interview.vtt"), workspace=workspace, kind="file")
@@ -67,7 +67,7 @@ def test_same_name_in_different_folders_does_not_merge(workspace, tmp_path,
 
 def test_recatch_same_file_is_idempotent(workspace, tmp_path, vtt_file):
     p = tmp_path / "again.vtt"
-    p.write_text(vtt_file.read_text(), encoding="utf-8")
+    p.write_text(vtt_file.read_text(encoding="utf-8"), encoding="utf-8")
     r1 = catch(str(p), workspace=workspace, kind="file")
     r2 = catch(str(p), workspace=workspace, kind="file")
     assert r1.entry_id == r2.entry_id

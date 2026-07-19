@@ -276,8 +276,11 @@ def test_non_loopback_host_is_rejected_dns_rebinding(tmp_path):
 
 
 def test_discovery_file_is_0600(tmp_path):
+    import os
     import stat
 
+    if os.name != "posix":
+        pytest.skip("permission bits are POSIX-only")
     bridge = PlayerBridge(Workspace(tmp_path), port=0, code="777000").start()
     try:
         mode = stat.S_IMODE(bridge.discovery_path.stat().st_mode)

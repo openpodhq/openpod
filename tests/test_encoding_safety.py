@@ -7,6 +7,7 @@ command down. NO_COLOR did not help: stripping ANSI leaves the glyphs.
 """
 
 import io
+import os
 import subprocess
 import sys
 
@@ -57,6 +58,8 @@ def test_cli_search_survives_cp1252_stdout():
     proc = subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
-        env={"PYTHONIOENCODING": "cp1252", "PATH": "/usr/bin:/bin"},
+        # Inherit the environment (Windows Python won't even start without
+        # SystemRoot); only the stdout encoding is forced.
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
     )
     assert b"UnicodeEncodeError" not in proc.stderr, proc.stderr.decode("utf-8", "replace")

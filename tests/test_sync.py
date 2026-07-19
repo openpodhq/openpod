@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 
 import pytest
 
@@ -135,12 +136,14 @@ def test_login_stores_credentials_via_device_flow(workspace):
     assert creds.email == "user@example.com"
     assert prompts == [("WXYZ-1234", "https://player.test/activate")]
 
-    # Credentials persisted, chmod 600, git-ignored.
+    # Credentials persisted, chmod 600 (POSIX; Windows has no such bits),
+    # git-ignored.
     stored = sync.load_credentials(workspace)
     assert stored is not None and stored.token == "abc"
     cred_path = sync._credentials_path(workspace)
-    assert (cred_path.stat().st_mode & 0o777) == 0o600
-    ignore = (workspace.dot / ".gitignore").read_text()
+    if os.name == "posix":
+        assert (cred_path.stat().st_mode & 0o777) == 0o600
+    ignore = (workspace.dot / ".gitignore").read_text(encoding="utf-8")
     assert "credentials" in ignore
 
 
@@ -346,7 +349,7 @@ def test_pull_bookmarks_writes_fenced_block(logged_in):
     })
     result = sync.pull_bookmarks(logged_in, transport=transport)
     assert result["entries_written"] == 1
-    notes = entry.notes_path.read_text()
+    notes = entry.notes_path.read_text(encoding="utf-8")
     assert "My own thoughts." in notes  # user prose preserved
     assert BOOKMARKS_START in notes and BOOKMARKS_END in notes
     assert "great point on latency" in notes
@@ -365,9 +368,9 @@ def test_pull_bookmarks_second_pull_is_idempotent(logged_in):
         ]}),
     }
     sync.pull_bookmarks(logged_in, transport=FakeTransport(routes))
-    first = entry.notes_path.read_text()
+    first = entry.notes_path.read_text(encoding="utf-8")
     sync.pull_bookmarks(logged_in, transport=FakeTransport(routes))
-    second = entry.notes_path.read_text()
+    second = entry.notes_path.read_text(encoding="utf-8")
     assert first == second
     assert second.count(BOOKMARKS_START) == 1
     assert "Prose." in second
@@ -388,7 +391,7 @@ def test_pull_bookmarks_accumulate_across_pulls(logged_in):
             {"id": "b2", "t": 65.0, "note": "second idea", "openpodEntryId": entry.entry_id},
         ]}),
     }))
-    notes = entry.notes_path.read_text()
+    notes = entry.notes_path.read_text(encoding="utf-8")
     assert "first idea" in notes  # not lost when b2 arrives
     assert "second idea" in notes
     assert notes.count(BOOKMARKS_START) == 1
@@ -396,7 +399,7 @@ def test_pull_bookmarks_accumulate_across_pulls(logged_in):
     # sorted by time inside the block
     assert notes.index("first idea") < notes.index("second idea")
     # the durable ledger holds both
-    ledger = json.loads((entry.dir / "bookmarks.json").read_text())
+    ledger = json.loads((entry.dir / "bookmarks.json").read_text(encoding="utf-8"))
     assert {b["id"] for b in ledger["bookmarks"]} == {"b1", "b2"}
 
 
@@ -432,7 +435,7 @@ def test_pull_heard_writes_listened_json(logged_in):
     })
     result = sync.pull_heard(logged_in, transport=transport)
     assert result["entries_written"] == 1
-    listened = json.loads((entry.dir / "listened.json").read_text())
+    listened = json.loads((entry.dir / "listened.json").read_text(encoding="utf-8"))
     assert listened["entry_id"] == entry.entry_id
     assert len(listened["heard"]) == 2
     assert listened["heard"][0]["heard_count"] == 2
@@ -489,7 +492,7 @@ def test_import_heard_round_trips_export_file(workspace, tmp_path):
     assert result["entries_written"] == 1
     assert result["follows_added"] >= 1  # at least the non-followed one
 
-    listened = json.loads((entry.dir / "listened.json").read_text())
+    listened = json.loads((entry.dir / "listened.json").read_text(encoding="utf-8"))
     assert listened["heard"][0]["text"] == "Raft is easier"
     assert listened["heard"][0]["heard_count"] == 3
 
@@ -519,7 +522,7 @@ def test_import_heard_merges_on_repeat(workspace, tmp_path):
     p2.write_text(json.dumps(_export(4)), encoding="utf-8")
     sync.import_heard(workspace, p2)
 
-    listened = json.loads((entry.dir / "listened.json").read_text())
+    listened = json.loads((entry.dir / "listened.json").read_text(encoding="utf-8"))
     # One merged record, higher count wins, no duplication.
     assert len(listened["heard"]) == 1
     assert listened["heard"][0]["heard_count"] == 4

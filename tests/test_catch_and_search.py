@@ -22,7 +22,7 @@ def test_catch_writes_artifacts(workspace, vtt_file):
     assert len(result.transcript) == 5
     assert result.ideas  # something salient was extracted
     # briefing scaffold has the agent-facing sections
-    briefing = entry.briefing_path.read_text()
+    briefing = entry.briefing_path.read_text(encoding="utf-8")
     assert "## Triage" in briefing
     assert "## Navigate" in briefing
 
