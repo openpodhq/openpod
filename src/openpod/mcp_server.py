@@ -246,8 +246,10 @@ def build_server():
         honoring the user's preferred playback app (settings) and the
         platform they originally pasted. The result says honestly what the
         link can do: `timestamp_supported: false` means it opens the episode,
-        not the moment — tell the user, don't imply precision. Apps:
-        youtube, spotify, apple, overcast, podcast (open enclosure)."""
+        not the moment — tell the user, don't imply precision. Apps: openpod
+        (the default — our own player, keeps the listener in OpenPod), youtube,
+        spotify, apple, overcast, podcast (raw enclosure — opens the OS default
+        podcast app; explicit opt-in only)."""
         from .crosswalk import Crosswalk
         from .deeplink import build_link
         from .library import Library
@@ -270,8 +272,9 @@ def build_server():
 
     @mcp.tool()
     def set_preferred_app(app: Optional[str] = None) -> dict:
-        """Get or set the user's preferred playback app (youtube, spotify,
-        apple, overcast, podcast). Call with no argument to read the current
+        """Get or set the user's preferred playback app (openpod, youtube,
+        spotify, apple, overcast, podcast). Leaving it unset keeps the default,
+        openpod (our own player). Call with no argument to read the current
         setting. Only set it at the user's explicit request."""
         from .deeplink import APP_CAPABILITIES
 

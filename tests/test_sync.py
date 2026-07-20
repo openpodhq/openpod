@@ -355,8 +355,12 @@ def test_pull_bookmarks_writes_fenced_block(logged_in):
     assert "great point on latency" in notes
     # Sorted by time: 0:05 line before 1:05 line.
     assert notes.index("raft vs paxos") < notes.index("great point on latency")
-    # Deep-link rendered from the podcast enclosure at the bookmark time.
-    assert "cdn.example.com/ep1.mp3#t=65" in notes
+    # Deep-link rendered as an OpenPod player link (feed + guid) at the
+    # bookmark time — never the raw enclosure, which would open in the OS
+    # default podcast app.
+    assert "https://player.openpod.dev/e/" in notes
+    assert "guid=ep-001&t=65" in notes
+    assert "cdn.example.com/ep1.mp3" not in notes
 
 
 def test_pull_bookmarks_second_pull_is_idempotent(logged_in):

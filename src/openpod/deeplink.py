@@ -19,7 +19,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from .identity import episode_key as _episode_key
 from .models import EpisodeIdentity, SourceRef
+
+# The hosted player that claims OpenPod's own moment links — mirrors the
+# share.ts momentUrl()/`/e/<episode_key>` path-form contract. An HTTPS origin
+# we own, so the link resolves inside OpenPod instead of the OS podcast app.
+PLAYER_ORIGIN = "https://player.openpod.dev"
 
 # Per-app capabilities: what identifier the link needs, whether a mid-episode
 # timestamp is honored, and how the URL is built.
@@ -28,8 +34,14 @@ APP_CAPABILITIES = {
     "spotify": {"needs": "spotify_episode_id", "timestamp": True},
     "apple": {"needs": "apple_episode_id", "timestamp": False},
     "overcast": {"needs": "enclosure_url", "timestamp": True},
-    # The open enclosure with a #t= media fragment: plays anywhere, but the
-    # fragment only seeks inside a player that reads it (OpenPod's own).
+    # OpenPod's own hosted player: an HTTPS link we own that resolves the
+    # episode by feed + guid/episode_key and seeks to t. This is the safe
+    # default — it keeps the listener inside OpenPod.
+    "openpod": {"needs": "feed_url", "timestamp": True},
+    # The open enclosure with a #t= media fragment. A bare enclosure resolves
+    # to audio/mpeg, so the OS hands it to the *default podcast app*, not our
+    # player — it leaks the listener out of OpenPod. Explicit opt-in only
+    # (preferred_app="podcast"), never the automatic fallback.
     "podcast": {"needs": "enclosure_url", "timestamp": True},
 }
 
@@ -55,16 +67,34 @@ def _identity_from_source(source: SourceRef) -> EpisodeIdentity:
     elif source.kind == "spotify":
         ident.spotify_episode_id = source.episode_id
     ident.enclosure_url = source.audio_url
+    # Feed identity for the OpenPod player link. A podcast SourceRef carries
+    # the feed (or episode page) URL and the RSS <guid>; the player resolves
+    # the episode from these, so the link never needs the raw enclosure.
+    ident.rss_guid = source.guid
+    ident.title = source.title
+    ident.published = source.published
+    if source.kind == "podcast":
+        ident.feed_url = source.url
     return ident
 
 
 def _pick_app(identity: EpisodeIdentity, *, app: Optional[str],
               preferred: Optional[str], origin_kind: Optional[str],
               source_kind: Optional[str]) -> str:
-    for candidate in (app, preferred, origin_kind, source_kind):
+    # An explicit choice (arg or workspace setting) may target any app,
+    # including the raw-enclosure "podcast" opt-in.
+    for candidate in (app, preferred):
         if candidate in APP_CAPABILITIES:
             return candidate
-    return "podcast"
+    # Inferred targets (where the link came from / the transcript source) never
+    # select the raw enclosure — a podcast origin/source maps to our own
+    # player, which keeps the listener inside OpenPod.
+    for candidate in (origin_kind, source_kind):
+        if candidate in APP_CAPABILITIES and candidate != "podcast":
+            return candidate
+    # Default to our own player — never the raw enclosure, which leaks the
+    # listener to the OS default podcast app.
+    return "openpod"
 
 
 def build_link(source: Optional[SourceRef], seconds: float, *,
@@ -92,8 +122,10 @@ def build_link(source: Optional[SourceRef], seconds: float, *,
     if result.url is not None:
         return result
 
-    # No identifier for the target app — fall back, and say so.
-    for fallback in ("youtube", "spotify", "podcast", "apple"):
+    # No identifier for the target app — fall back, and say so. "podcast" (the
+    # raw enclosure) is deliberately absent: a missing platform id degrades to
+    # our own player link, never to a link that opens outside OpenPod.
+    for fallback in ("youtube", "spotify", "openpod", "apple"):
         if fallback == target:
             continue
         r = _render(fallback, ident, t, origin=origin)
@@ -142,6 +174,22 @@ def _render(app: str, ident: EpisodeIdentity, t: int,
             app=app, timestamp_supported=True,
             note="opens in Overcast via x-callback-url")
 
+    if app == "openpod" and ident.feed_url:
+        from urllib.parse import quote, urlencode
+        # Prefer the crosswalked key; else derive it exactly as the player does
+        # (openpod.identity.episode_key), so the ek fallback matches byte-for-byte.
+        key = ident.episode_key or _episode_key(
+            ident.feed_url, guid=ident.rss_guid, audio_url=ident.enclosure_url,
+            title=ident.title, published=ident.published)[0]
+        params = [("feed", ident.feed_url)]
+        if ident.rss_guid:
+            params.append(("guid", ident.rss_guid))
+        params.append(("t", str(t)))
+        return LinkResult(
+            url=f"{PLAYER_ORIGIN}/e/{key}?{urlencode(params, quote_via=quote)}",
+            app=app, timestamp_supported=True,
+            note="opens in the OpenPod player at the moment")
+
     if app == "podcast" and ident.enclosure_url:
         sep = "&" if "#" in ident.enclosure_url else "#"
         return LinkResult(
@@ -158,12 +206,18 @@ def build_deeplink(source: SourceRef, seconds: float) -> Optional[str]:
 
     Prefer :func:`build_link` — it honors origin/preference and reports
     capability honestly instead of returning a bare string.
+
+    A podcast source now defaults to the OpenPod *player* link (feed + guid),
+    not the raw enclosure: the enclosure resolved to audio/mpeg and leaked the
+    listener to the OS default podcast app. Pass ``preferred_app="podcast"`` to
+    :func:`build_link` to opt back into the raw enclosure explicitly.
     """
     if source is None:
         return None
-    r = build_link(source, seconds, app=source.kind
-                   if source.kind in APP_CAPABILITIES else None)
     # The old contract returned None for apple/file/unknown sources.
     if source.kind not in ("youtube", "spotify", "podcast"):
         return None
-    return r.url
+    # youtube/spotify keep their native platform link; a podcast takes the
+    # default target (now "openpod"), never the raw enclosure.
+    app = source.kind if source.kind in ("youtube", "spotify") else None
+    return build_link(source, seconds, app=app).url
