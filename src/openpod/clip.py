@@ -24,7 +24,8 @@ from .card import render_card_html, render_card_png
 from .config import Workspace
 from .deeplink import build_deeplink
 from .library import Library, LibraryEntry
-from .models import SourceRef, Transcript, format_timestamp, slugify
+from .models import (SourceRef, Transcript, format_timestamp, slugify,
+                     spoken_spans)
 from .theme import BLUE_DARK
 
 
@@ -70,26 +71,6 @@ _FILLERS = frozenset(
     {"uh", "um", "uhh", "umm", "er", "erm", "ah", "hmm", "mhm"})
 _SENTENCE_END = re.compile(r"[.?!…][\"'”’)\]]*\s*$")
 _SENTENCE_BREAK = re.compile(r"[.?!…][\"'”’)\]]*\s+\S")
-
-
-def _spoken_spans(cues: list) -> list[tuple[float, float]]:
-    """Per-cue (start, end) of when the words are actually *spoken*. When a
-    cue's stored end runs past the next cue's start (rolling captions), its
-    words are done by the time the next cue begins."""
-    spans = []
-    for i, c in enumerate(cues):
-        end = c.end if c.end is not None else c.start
-        if i + 1 < len(cues) and cues[i + 1].start < end:
-            end = cues[i + 1].start
-        spans.append((c.start, max(end, c.start)))
-    return spans
-
-
-def _spoken_window(cues: list, spans: list, start: float, end: float) -> list:
-    """Cues audible in [start, end): strict overlap on spoken spans, so a
-    rolling cue that merely lingers on screen past ``start`` (words already
-    said) doesn't put unspoken text in the quote."""
-    return [c for c, (s, e) in zip(cues, spans) if e > start and s < end]
 
 
 def _starts_sentence(cues: list, i: int) -> bool:
@@ -164,7 +145,7 @@ def snap_to_cues(transcript: Transcript, start: float, end: float,
     cues = transcript.cues
     if not cues:
         return max(0.0, start - pad), end + pad
-    spans = _spoken_spans(cues)
+    spans = spoken_spans(cues)
     snapped_start = _snap_start(cues, spans, start)
     snapped_end = _snap_end(cues, spans, max(end, snapped_start))
     return max(0.0, snapped_start - pad), snapped_end + pad
@@ -266,9 +247,8 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
         # Spoken spans, not raw cue spans: a rolling caption lingering on
         # screen past `start` must not put words the cut doesn't contain
         # into the quote.
-        audible = _spoken_window(transcript.cues,
-                                 _spoken_spans(transcript.cues), start, end)
-        quote = " ".join(c.text for c in audible).strip()
+        quote = " ".join(c.text for c in
+                         transcript.spoken_window(start, end)).strip()
 
     # Get the media — via the shared cache, video-preserving by default.
     from .media import get_media, source_has_video

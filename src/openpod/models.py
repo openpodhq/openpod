@@ -189,13 +189,24 @@ class Transcript:
         return sep.join(c.text.strip() for c in self.cues if c.text.strip())
 
     def window(self, start: float, end: float) -> list[Cue]:
-        """Return cues that overlap the [start, end] time window."""
+        """Return cues that overlap the [start, end] time window.
+
+        Raw on-screen spans: a rolling caption still displayed at ``start``
+        is included even if its words were spoken earlier. For what is
+        actually *audible* in the window, use :meth:`spoken_window`."""
         out = []
         for c in self.cues:
             c_end = c.end if c.end is not None else c.start
             if c_end >= start and c.start <= end:
                 out.append(c)
         return out
+
+    def spoken_window(self, start: float, end: float) -> list[Cue]:
+        """Cues actually audible in [start, end): strict overlap on spoken
+        spans, so a rolling cue that merely lingers on screen past ``start``
+        (its words already said) is not included."""
+        return [c for c, (s, e) in zip(self.cues, spoken_spans(self.cues))
+                if e > start and s < end]
 
     def cue_at(self, seconds: float) -> Optional[Cue]:
         """The cue active at a given time (nearest preceding cue)."""
@@ -229,6 +240,27 @@ class Transcript:
             word_level=bool(d.get("word_level", False)),
             notes=d.get("notes"),
         )
+
+
+def spoken_spans(cues: list[Cue]) -> list[tuple[float, float]]:
+    """Per-cue (start, end) of when the words are actually *spoken*.
+
+    Rolling captions (YouTube auto-captions) keep each line on screen while
+    the next rolls in, so a cue's stored ``end`` is when it scrolls off — not
+    when its words stop. When a cue overlaps its successor, its words are
+    done by the successor's start. A point cue (``end is None``) is taken to
+    run until the next cue begins. Non-overlapping timed cues pass through
+    unchanged.
+    """
+    spans: list[tuple[float, float]] = []
+    for i, c in enumerate(cues):
+        nxt = cues[i + 1].start if i + 1 < len(cues) else None
+        end = c.end if c.end is not None else (nxt if nxt is not None
+                                               else c.start)
+        if nxt is not None and nxt < end:
+            end = nxt
+        spans.append((c.start, max(end, c.start)))
+    return spans
 
 
 # --------------------------------------------------------------------------- #

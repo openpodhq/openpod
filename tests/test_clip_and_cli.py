@@ -1,7 +1,7 @@
 import textwrap
 
 import openpod.transcript as tx
-from openpod.clip import _spoken_spans, _spoken_window, snap_to_cues
+from openpod.clip import snap_to_cues
 from openpod.cli import main
 
 
@@ -54,9 +54,7 @@ def test_snap_rolling_captions_finds_sentence_start():
 
 def test_quote_excludes_lingering_rolling_cue():
     t = tx.load(ROLLING_VTT, fmt="vtt")
-    spans = _spoken_spans(t.cues)
-    audible = _spoken_window(t.cues, spans, 21.76, 33.6)
-    texts = [c.text for c in audible]
+    texts = [c.text for c in t.spoken_window(21.76, 33.6)]
     # the 20.0 cue is still on screen at 21.76 but its words are already
     # spoken — it must not leak into the quote
     assert texts[0].startswith("well. And the last")

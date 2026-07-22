@@ -2,7 +2,7 @@ import json
 
 from openpod.captions import (FORCE_BREAK, captions_block, is_rtl,
                               phrases_for_window, split_phrases, to_srt,
-                              captions_for_window)
+                              captions_for_window, verify_coverage)
 from openpod.catch import catch
 from openpod.clip import clip, resolve_speakers, speaker_label
 from openpod.models import Cue, SourceRef, Transcript
@@ -55,6 +55,42 @@ def test_captions_block_honest_timing():
     assert captions_block(pub, 0, 4)["timing"] == "cue"
     words = [{"text": "hi", "start": 0.0, "end": 0.2}]
     assert captions_block(pub, 0, 4, words=words)["timing"] == "exact"
+
+
+# Rolling YouTube auto-captions: stored ends are when a line scrolls off
+# screen, so cues overlap and a line lingers past the clip start. Same shape
+# as ROLLING_VTT in test_clip_and_cli.py (the real Karpathy failure).
+_ROLLING_CUES = [
+    Cue(start=20.0, end=23.84, text="to this point a little bit uh later as"),
+    Cue(start=21.76, end=25.2, text="well. And the last kind of feature I"),
+    Cue(start=23.84, end=27.68, text="want to point out is that there's what I"),
+    Cue(start=25.2, end=29.44, text="call the autonomy slider So for"),
+    Cue(start=27.68, end=31.52, text="example in cursor you can just do tap"),
+    Cue(start=29.44, end=33.6, text="completion. You're mostly in charge."),
+]
+
+
+def test_captions_rolling_cues_exclude_lingering_line():
+    t = Transcript(cues=_ROLLING_CUES, source="youtube-captions")
+    lines = captions_for_window(t, 21.76, 33.6)
+    # the 20.0 cue is still on screen at 21.76 but its words are already
+    # spoken — it must not show text at clip start that isn't in the audio
+    assert lines[0].text.startswith("well. And the last")
+    assert all("to this point" not in l.text for l in lines)
+    assert lines[0].start == 0.0
+    # spoken spans: sidecar lines don't overlap the way raw rolling ends do
+    for a, b in zip(lines, lines[1:]):
+        assert b.start >= a.end
+
+
+def test_verify_coverage_over_audible_cues_only():
+    t = Transcript(cues=_ROLLING_CUES, source="youtube-captions")
+    lines = captions_for_window(t, 21.76, 33.6)
+    report = verify_coverage(t, 21.76, 33.6, lines)
+    assert report.total_cues == 5      # not 6: the pre-cut line isn't owed
+    assert report.ok
+    # dropping a line is still a failed check, never a silent gap
+    assert not verify_coverage(t, 21.76, 33.6, lines[:-1]).ok
 
 
 def test_is_rtl():

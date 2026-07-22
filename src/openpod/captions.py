@@ -1,10 +1,11 @@
 """Captions — generated from the transcript, verified for coverage.
 
-The QA rule this module enforces: caption lines are derived from
-``transcript.window(start, end)``, never hand-summarized, and any caption
-set headed for a burn-in must pass a **coverage check** against that same
-window first. (The session that motivated this compressed 17 spoken beats
-into 16 and silently lost three claims.)
+The QA rule this module enforces: caption lines are derived from the cues
+actually audible in the clip window (spoken spans — rolling YouTube caption
+overlap collapsed, see ``models.spoken_spans``), never hand-summarized, and
+any caption set headed for a burn-in must pass a **coverage check** against
+that same window first. (The session that motivated this compressed 17
+spoken beats into 16 and silently lost three claims.)
 
 Translation stays the agent's job — OpenPod ships no translator — but the
 contract makes it safe: ``export_captions`` emits source-language lines with
@@ -21,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .models import Transcript
+from .models import Transcript, spoken_spans
 
 
 @dataclass
@@ -69,34 +70,50 @@ class CaptionResult:
         }
 
 
+def _audible_cues(transcript: Transcript, start: float,
+                  end: float) -> list[tuple]:
+    """``(cue, spoken_start, spoken_end)`` for cues audible in [start, end).
+
+    Spoken spans, not raw on-screen spans: a rolling cue that lingers on
+    screen past ``start`` (its words already said before the cut) is not
+    part of the clip's captions. A trailing point cue with no successor to
+    bound it is assumed to run a beat (5s, clamped to the window)."""
+    out = []
+    for cue, (c_start, c_end) in zip(transcript.cues,
+                                     spoken_spans(transcript.cues)):
+        if c_end <= c_start:
+            c_end = min(c_start + 5.0, max(end, c_start))
+        if c_end > start and c_start < end and cue.text.strip():
+            out.append((cue, c_start, c_end))
+    return out
+
+
 def captions_for_window(transcript: Transcript, start: float,
                         end: float) -> list[CaptionLine]:
-    """Caption lines straight from the transcript cues — full coverage by
-    construction, re-based so the clip starts at 0."""
+    """Caption lines straight from the audible transcript cues — full
+    coverage by construction, re-based so the clip starts at 0. Line
+    timings are spoken spans, so rolling captions don't overlap in the
+    sidecar or the burn."""
     lines = []
-    for cue in transcript.window(start, end):
-        c_end = cue.end if cue.end is not None else min(cue.start + 5.0, end)
-        s = max(cue.start, start) - start
+    for cue, c_start, c_end in _audible_cues(transcript, start, end):
+        s = max(c_start, start) - start
         e = max(min(c_end, end) - start, s + 0.5)
-        text = cue.text.strip()
-        if text:
-            lines.append(CaptionLine(start=round(s, 3), end=round(e, 3),
-                                     text=text))
+        lines.append(CaptionLine(start=round(s, 3), end=round(e, 3),
+                                 text=cue.text.strip()))
     return lines
 
 
 def verify_coverage(transcript: Transcript, start: float, end: float,
                     lines: list) -> CoverageReport:
-    """Check that every spoken cue in [start, end] is represented by at
+    """Check that every audible cue in [start, end] is represented by at
     least one caption line (clip-relative timings). Timing-based on purpose:
     it works for translated text where token overlap can't."""
-    cues = [c for c in transcript.window(start, end) if c.text.strip()]
     gaps = []
     covered = 0
-    for cue in cues:
-        c_start = max(cue.start, start) - start
-        c_end = (cue.end if cue.end is not None else cue.start + 5.0)
-        c_end = min(c_end, end) - start
+    audible = _audible_cues(transcript, start, end)
+    for cue, a_start, a_end in audible:
+        c_start = max(a_start, start) - start
+        c_end = min(a_end, end) - start
         mid = (c_start + max(c_end, c_start)) / 2
         hit = any(l.start <= mid <= l.end or
                   (l.start < c_end and l.end > c_start) for l in lines)
@@ -105,7 +122,7 @@ def verify_coverage(transcript: Transcript, start: float, end: float,
         else:
             gaps.append({"start": round(c_start, 3), "end": round(c_end, 3),
                          "text": cue.text.strip()})
-    return CoverageReport(total_cues=len(cues), covered_cues=covered,
+    return CoverageReport(total_cues=len(audible), covered_cues=covered,
                           gaps=gaps, ok=not gaps)
 
 
