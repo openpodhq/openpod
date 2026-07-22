@@ -149,12 +149,14 @@ def build_server():
         word_level=True (falls back to keyword styling with a note).
 
         FIRST USE: when the result carries `first_use`, this workspace has
-        never configured clipping — ask the user its questions ONCE, in one
-        message, as multiple choice (never a form, never prose), save each
-        answer via the settings tool, and set clip.setup_done=true. If the
-        user skips, still set setup_done=true — never ask twice. Until it's
-        answered, don't silently pick presentation defaults like hidden
-        sidecar captions when the user asked for a social clip."""
+        never configured clipping — and those are the USER's decisions, not
+        yours. Ask its questions ONCE, in one message, as multiple choice
+        (never a form, never prose, never answered on the user's behalf),
+        save each answer via the settings tool, and set clip.setup_done=true
+        only after the user has picked or explicitly skipped (skipping keeps
+        defaults — never ask twice). Until it's answered, don't silently pick
+        presentation defaults like hidden sidecar captions when the user
+        asked for a social clip."""
         from .clip import clip as _clip
 
         r = _clip(entry_id, start, end, workspace=_workspace(), snap=snap,

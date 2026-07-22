@@ -6,6 +6,29 @@ All notable changes to OpenPod are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **`openpod init` — the workspace front door.** Creates `.openpod/` and
+  writes `AGENTS.md` at the workspace root: the agent contract — who
+  decides what (everything that lands in visible pixels belongs to the
+  user; `first_use` questions are relayed, never self-answered),
+  presentation goes through the product (no hand-rolled ffmpeg/ASS
+  scripts beside the built-in styles), and where the playbooks are
+  (`openpod skills`). An existing AGENTS.md is never clobbered —
+  `--print` to merge by hand, `--force` to overwrite. Field-tested need:
+  an agent in an undocumented workspace scaffolded its own README,
+  answered the user's setup questions itself, and reimplemented caption
+  styling the engine already ships.
+
+### Changed
+- **First-use speaks to the agent, not past it.** The CLI's first-clip
+  hint used to read as two commands to run — and an agent driving the
+  CLI ran them: it answered the user's one-time setup questions itself
+  and set `clip.setup_done` without the user ever seeing a choice. The
+  hint now renders the full multiple-choice block addressed to the
+  reader that actually reads it ("these are your user's decisions, not
+  yours"), and the `first_use` payload and MCP clip tool carry the same
+  contract: relay, save, and only the user may skip.
+
+### Added
 - **First-use clip setup + social framing.** The first clip in a workspace
   returns a `first_use` block: the product's own multiple-choice questions,
   asked once in one message — where clips land (the `.openpod` library, the

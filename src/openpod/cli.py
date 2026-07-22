@@ -180,6 +180,27 @@ def _cmd_search(args) -> int:
     return 0
 
 
+def _print_first_use(block: dict) -> None:
+    """Render the one-time clip setup as what it is: the USER's multiple
+    choice. The reader of this output is usually an agent driving the CLI —
+    address it directly, or it treats the hint as its own todo list and
+    answers the questions itself (this has happened)."""
+    print("  first clip in this workspace — one-time setup.")
+    print("    If you are an agent: these are your user's decisions, not yours.")
+    print("    Present them as one multiple-choice message, save each answer")
+    print("    with `openpod settings <key> <value>`, then run")
+    print("    `openpod settings clip.setup_done true`. Do not pick for the")
+    print("    user; only they may skip (skipping keeps the defaults).")
+    for i, q in enumerate(block.get("questions", []), 1):
+        print(f"    {i}. {q['question']}  [{q['setting']}]")
+        for o in q["options"]:
+            if o["value"] is None:
+                value = "leave unset (default)"
+            else:
+                value = json.dumps(o["value"], ensure_ascii=False)
+            print(f"       - {value}: {o['label']}")
+
+
 def _cmd_clip(args) -> int:
     from .clip import clip
 
@@ -232,11 +253,7 @@ def _cmd_clip(args) -> int:
     if result.capability_note:
         print(f"  note: {result.capability_note}")
     if result.first_use:
-        print("  first clip here — set your defaults once "
-              "(where clips land, captions, color & style, dimensions, "
-              "headline):\n"
-              "    openpod settings clip.export_dir .    # etc., then\n"
-              "    openpod settings clip.setup_done true")
+        _print_first_use(result.first_use)
     if result.card_path:
         print(f"  share card: {theme.path(str(result.card_path))}")
         if result.card_png_path:
@@ -279,6 +296,33 @@ def _cmd_captions(args) -> int:
         payload["words"] = len(words)
     print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0 if r.coverage.ok else 2
+
+
+def _cmd_init(args) -> int:
+    """Create the workspace and write the agent contract (AGENTS.md).
+
+    The contract is the front door: any agent opening the folder reads who
+    decides what before its first tool call. An existing AGENTS.md is the
+    user's — never clobbered without --force."""
+    from .agents_doc import AGENTS_BASENAME, agents_md_text
+
+    ws = _ws(args)
+    if args.print:
+        print(agents_md_text())
+        return 0
+    created = not ws.exists()
+    ws.ensure()
+    target = ws.root / AGENTS_BASENAME
+    if target.exists() and not args.force:
+        print(f"{theme.path(str(target))} already exists — left untouched")
+        print("  merge by hand from `openpod init --print`, or overwrite "
+              "with `openpod init --force`")
+        return 1
+    target.write_text(agents_md_text(), encoding="utf-8")
+    print(f"workspace: {theme.path(str(ws.dot))}"
+          + ("" if created else " (already existed)"))
+    print(f"agent contract: {theme.path(str(target))}")
+    return 0
 
 
 def _cmd_settings(args) -> int:
@@ -680,6 +724,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--home", help="workspace root (default: $OPENPOD_HOME or cwd)")
     sub = p.add_subparsers(dest="command")
+
+    ini = sub.add_parser(
+        "init",
+        help="create the workspace and write AGENTS.md — the contract that "
+             "tells agents how to work here")
+    ini.add_argument("--print", action="store_true",
+                     help="print the contract to stdout instead of writing")
+    ini.add_argument("--force", action="store_true",
+                     help="overwrite an existing AGENTS.md")
+    ini.set_defaults(func=_cmd_init)
 
     c = sub.add_parser("catch", help="ingest a link into the library")
     c.add_argument("link", help="podcast/RSS/YouTube link, or a local file")

@@ -44,7 +44,14 @@ def test_first_use_block_until_setup_done(workspace, vtt_file, tiny_wav_file):
     label_q = next(q for q in r.first_use["questions"]
                    if q["setting"] == "clip.label")
     assert label_q["options"][0]["value"] is False
-    assert "never ask twice" in r.first_use["instructions"].lower()
+    instructions = r.first_use["instructions"].lower()
+    assert "never ask twice" in instructions
+    # the payload is addressed to an agent acting for a human: the user
+    # picks, the agent relays — an agent that answers these itself is
+    # violating the contract, not following it
+    assert "not yours" in instructions
+    assert "never answer" in instructions
+    assert "only the user may skip" in instructions
 
     workspace.set_setting("clip.setup_done", True)
     r2 = clip(entry.entry_id, 5, 20, workspace=workspace,
@@ -59,6 +66,23 @@ def test_setup_done_is_a_documented_setting(workspace):
     assert workspace.effective_settings()["clip"]["aspect"] == "vertical"
     workspace.set_setting("clip.caption_style.color", "#FFE14D")
     assert workspace.effective_settings()["clip"]["caption_style"]["color"] == "#FFE14D"
+
+
+def test_cli_first_use_render_addresses_the_agent(workspace, capsys):
+    # The CLI print is usually read by an agent driving the shell. It must
+    # open with whose decisions these are and render every choice inline —
+    # a bare "run these settings commands" hint gets executed verbatim.
+    from openpod.cli import _print_first_use
+
+    _print_first_use(first_use_questions(workspace))
+    out = capsys.readouterr().out
+    assert "your user's decisions, not yours" in out
+    assert "openpod settings clip.setup_done true" in out
+    assert "Where should your clips land?" in out
+    assert "TikTok" in out
+    # a None value means "don't set the key" — never a literal to pass
+    assert "leave unset" in out
+    assert "null" not in out
 
 
 def test_first_use_questions_platform_hints(workspace):

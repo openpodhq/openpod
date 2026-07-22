@@ -249,11 +249,12 @@ def first_use_questions(ws: Workspace) -> dict:
     return {
         "ask_once": True,
         "instructions": (
-            "First clip in this workspace: ask the user these once (as "
-            "multiple choice — one message, not an interview), save each "
-            "answer with the settings tool, then set clip.setup_done=true. "
-            "If they skip, set setup_done=true anyway and keep defaults — "
-            "never ask twice."),
+            "First clip in this workspace — these are the user's decisions, "
+            "not yours. Present the questions ONCE as multiple choice (one "
+            "message, not an interview) and let the user pick; never answer "
+            "on their behalf. Save each answer with the settings tool, then "
+            "set clip.setup_done=true. Only the user may skip — if they do, "
+            "set setup_done=true anyway and keep defaults; never ask twice."),
         "questions": [
             {"setting": "clip.export_dir",
              "question": "Where should your clips land?",

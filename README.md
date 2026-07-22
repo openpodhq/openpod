@@ -70,6 +70,8 @@ On Windows, JSON needs the backslashes escaped: `"OPENPOD_HOME": "C:\\Users\\you
 
 Say *"catch me up on this episode"* and the agent runs `catch`, reads your local persona file, and writes a cited briefing back into your library — then hands you the path. Mid-conversation, no dashboard, no copy-paste.
 
+Driving the CLI instead of MCP (shell-first agents like Codex)? Run `openpod init` once — it writes `AGENTS.md` at the workspace root: the contract that tells any agent who decides what (setup questions belong to you, not the agent) and that presentation goes through the product, not hand-rolled scripts.
+
 ## The four primitives
 
 | Tool | Does | Writes |
