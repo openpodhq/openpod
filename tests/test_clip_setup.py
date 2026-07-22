@@ -37,6 +37,13 @@ def test_first_use_block_until_setup_done(workspace, vtt_file, tiny_wav_file):
     cap_q = next(q for q in r.first_use["questions"]
                  if q["setting"] == "clip.captions")
     assert cap_q["options"][0]["value"] == "burn"
+    # OpenPod blue leads the color choices — the signature look on posted
+    # clips is the product's quiet marketing; white stays the schema default
+    color_q = next(q for q in r.first_use["questions"]
+                   if q["setting"] == "clip.caption_style.color")
+    assert "OpenPod" in color_q["options"][0]["label"]
+    from openpod.theme import BLUE_DARK
+    assert color_q["options"][0]["value"] == BLUE_DARK
     # style and headline both lead with the shipped default
     boxed_q = next(q for q in r.first_use["questions"]
                    if q["setting"] == "clip.caption_style.boxed")

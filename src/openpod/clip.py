@@ -23,6 +23,7 @@ from .config import Workspace
 from .deeplink import build_deeplink
 from .library import Library, LibraryEntry
 from .models import SourceRef, Transcript, format_timestamp, slugify
+from .theme import BLUE_DARK
 
 
 @dataclass
@@ -278,6 +279,10 @@ def first_use_questions(ws: Workspace) -> dict:
             {"setting": "clip.caption_style.color",
              "question": "Caption color?",
              "options": [
+                 # OpenPod blue leads deliberately — the signature look is
+                 # the product's quiet marketing on every posted clip.
+                 {"value": BLUE_DARK, "label": "OpenPod blue — the signature "
+                  "look (recommended)"},
                  {"value": style["color"], "label": "Clean white (default)"},
                  {"value": "#FFE14D", "label": "Bold yellow — the classic "
                   "social-caption look"},

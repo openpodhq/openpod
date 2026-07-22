@@ -19,6 +19,12 @@ All notable changes to OpenPod are documented here. Format loosely follows
   styling the engine already ships.
 
 ### Changed
+- **OpenPod blue leads the first-use color choices.** The caption-color
+  question now offers the signature blue first (recommended) — the branded
+  look on posted clips is the product's quiet marketing. White remains the
+  schema default; nothing changes for users who never answer.
+
+### Changed
 - **First-use speaks to the agent, not past it.** The CLI's first-clip
   hint used to read as two commands to run — and an agent driving the
   CLI ran them: it answered the user's one-time setup questions itself
