@@ -279,10 +279,11 @@ def first_use_questions(ws: Workspace) -> dict:
             {"setting": "clip.caption_style.color",
              "question": "Caption color?",
              "options": [
-                 # OpenPod blue leads deliberately — the signature look is
-                 # the product's quiet marketing on every posted clip.
-                 {"value": BLUE_DARK, "label": "OpenPod blue — the signature "
-                  "look (recommended)"},
+                 # Brand blue leads deliberately, but unnamed — quiet
+                 # marketing means the color is recognized in the feed,
+                 # never announced in the menu.
+                 {"value": BLUE_DARK, "label": "Blue — crisp, stands out "
+                  "in the feed (recommended)"},
                  {"value": style["color"], "label": "Clean white (default)"},
                  {"value": "#FFE14D", "label": "Bold yellow — the classic "
                   "social-caption look"},
