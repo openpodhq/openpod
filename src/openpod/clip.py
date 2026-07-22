@@ -2,8 +2,9 @@
 
 Cuts a word-ish-accurate span out of an episode's audio into a **local file the
 user owns**. No publishing, no re-hosting — that regulated surface is Stage 2.
-Boundaries snap to transcript cue edges (the naval-clipper trick) so cuts land
-on sentence boundaries rather than mid-word.
+Boundaries snap to sentence-shaped transcript boundaries (the naval-clipper
+trick, made punctuation- and pause-aware for rolling YouTube auto-captions)
+so cuts land on sentence edges rather than mid-word.
 
 Requires ``ffmpeg`` on PATH and access to the source audio (a podcast enclosure,
 or a downloadable media URL via the ``youtube`` extra).
@@ -12,6 +13,7 @@ or a downloadable media URL via the ``youtube`` extra).
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,25 +56,117 @@ class ClipResult:
             self.export_paths = []
 
 
+# Boundary snapping. A cue edge is only a good cut when it is sentence-shaped:
+# podcast VTTs are one-sentence-per-cue, but YouTube auto-captions "roll" —
+# each line's stored end is when it scrolls off screen (one or two cues later),
+# so cue edges are line-wraps that land mid-sentence. The snap therefore hunts
+# nearby (within _SNAP_REACH_SECS) for, in order of trust: a cue where a
+# sentence starts/ends (punctuation), a spoken pause in the cue timing, and
+# finally the plain enclosing cue edge — never opening cold on a filler word.
+# Only WHERE to cut ever moves; caption text is never altered or invented.
+_SNAP_REACH_SECS = 12.0  # how far a boundary may travel hunting for a sentence
+_PAUSE_SECS = 0.6        # a cue-timing gap this long counts as a spoken pause
+_FILLERS = frozenset(
+    {"uh", "um", "uhh", "umm", "er", "erm", "ah", "hmm", "mhm"})
+_SENTENCE_END = re.compile(r"[.?!…][\"'”’)\]]*\s*$")
+_SENTENCE_BREAK = re.compile(r"[.?!…][\"'”’)\]]*\s+\S")
+
+
+def _spoken_spans(cues: list) -> list[tuple[float, float]]:
+    """Per-cue (start, end) of when the words are actually *spoken*. When a
+    cue's stored end runs past the next cue's start (rolling captions), its
+    words are done by the time the next cue begins."""
+    spans = []
+    for i, c in enumerate(cues):
+        end = c.end if c.end is not None else c.start
+        if i + 1 < len(cues) and cues[i + 1].start < end:
+            end = cues[i + 1].start
+        spans.append((c.start, max(end, c.start)))
+    return spans
+
+
+def _spoken_window(cues: list, spans: list, start: float, end: float) -> list:
+    """Cues audible in [start, end): strict overlap on spoken spans, so a
+    rolling cue that merely lingers on screen past ``start`` (words already
+    said) doesn't put unspoken text in the quote."""
+    return [c for c, (s, e) in zip(cues, spans) if e > start and s < end]
+
+
+def _starts_sentence(cues: list, i: int) -> bool:
+    """Cue ``i`` is a sentence-shaped place to start: the previous cue closed
+    a sentence, or one closes inside this cue (starting here carries at most
+    a few lead-in words of the prior sentence, never a mid-sentence jolt)."""
+    if i > 0 and _SENTENCE_END.search(cues[i - 1].text):
+        return True
+    return bool(_SENTENCE_BREAK.search(cues[i].text))
+
+
+def _first_word(text: str) -> str:
+    words = text.split()
+    return words[0].strip(",.?!…\"'").lower() if words else ""
+
+
+def _snap_start(cues: list, spans: list, start: float) -> float:
+    idx = 0
+    for i, c in enumerate(cues):
+        if c.start <= start:
+            idx = i
+        else:
+            break
+    # 1) the nearest cue at/before the request where a sentence starts
+    for i in range(idx, -1, -1):
+        if start - cues[i].start > _SNAP_REACH_SECS:
+            break
+        if _starts_sentence(cues, i):
+            return cues[i].start
+    # 2) the nearest spoken pause in the cue timing
+    for i in range(idx, -1, -1):
+        if start - cues[i].start > _SNAP_REACH_SECS:
+            break
+        if i == 0 or cues[i].start - spans[i - 1][1] >= _PAUSE_SECS:
+            return cues[i].start
+    # 3) the plain enclosing cue edge — stepping back off a filler-word open
+    i = idx
+    while i > 0 and _first_word(cues[i].text) in _FILLERS \
+            and start - cues[i - 1].start <= _SNAP_REACH_SECS:
+        i -= 1
+    return cues[i].start
+
+
+def _snap_end(cues: list, spans: list, end: float) -> float:
+    k0 = next((k for k in range(len(cues)) if spans[k][1] >= end), None)
+    if k0 is None or cues[k0].start >= end:
+        return end  # past the last word, or already inside a silence gap
+    # 1) the nearest cue at/after the request that closes a sentence
+    for k in range(k0, len(cues)):
+        if spans[k][1] - end > _SNAP_REACH_SECS:
+            break
+        if _SENTENCE_END.search(cues[k].text) \
+                or _SENTENCE_BREAK.search(cues[k].text):
+            return spans[k][1]
+    # 2) the nearest spoken pause after a cue
+    for k in range(k0, len(cues)):
+        if spans[k][1] - end > _SNAP_REACH_SECS:
+            break
+        if k + 1 == len(cues) or cues[k + 1].start - spans[k][1] >= _PAUSE_SECS:
+            return spans[k][1]
+    # 3) the plain enclosing cue edge
+    c = cues[k0]
+    return max(c.end if c.end is not None else c.start, end)
+
+
 def snap_to_cues(transcript: Transcript, start: float, end: float,
                  *, pad: float = 0.0) -> tuple[float, float]:
-    """Expand [start, end] outward to the nearest enclosing cue boundaries."""
-    if not len(transcript):
+    """Expand [start, end] outward to the nearest sentence-shaped boundaries
+    (see the snapping notes above — on rolling YouTube captions the plain
+    cue edge lands mid-sentence, so punctuation and pauses are consulted
+    first, plain cue edges last)."""
+    cues = transcript.cues
+    if not cues:
         return max(0.0, start - pad), end + pad
-    starts = [c.start for c in transcript.cues]
-    # snap start down to the cue that contains it
-    snapped_start = max((s for s in starts if s <= start), default=starts[0])
-    # snap end up to the end of the cue containing `end`
-    snapped_end = end
-    for c in transcript.cues:
-        c_end = c.end if c.end is not None else c.start
-        if c.start <= end <= max(c_end, c.start):
-            snapped_end = max(c_end, end)
-            break
-    else:
-        later = [c.start for c in transcript.cues if c.start >= end]
-        if later:
-            snapped_end = later[0]
+    spans = _spoken_spans(cues)
+    snapped_start = _snap_start(cues, spans, start)
+    snapped_end = _snap_end(cues, spans, max(end, snapped_start))
     return max(0.0, snapped_start - pad), snapped_end + pad
 
 
@@ -169,7 +263,12 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
 
     quote = ""
     if transcript is not None:
-        quote = " ".join(c.text for c in transcript.window(start, end)).strip()
+        # Spoken spans, not raw cue spans: a rolling caption lingering on
+        # screen past `start` must not put words the cut doesn't contain
+        # into the quote.
+        audible = _spoken_window(transcript.cues,
+                                 _spoken_spans(transcript.cues), start, end)
+        quote = " ".join(c.text for c in audible).strip()
 
     # Get the media — via the shared cache, video-preserving by default.
     from .media import get_media, source_has_video
