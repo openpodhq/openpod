@@ -481,6 +481,13 @@ def _apply_presentation(result: ClipResult, entry, ws: Workspace, *,
         import shutil as _shutil
 
         dest = Path(dest_setting).expanduser()
+        # A relative export_dir from SETTINGS means "inside this workspace"
+        # — resolve against the root, not the process cwd (an MCP server's
+        # cwd is wherever the client launched it). "." keeps its documented
+        # meaning (the user's working directory), and an explicit out_dir
+        # argument stays caller-relative.
+        if out_dir is None and not dest.is_absolute() and dest_setting != ".":
+            dest = ws.root / dest
         dest.mkdir(parents=True, exist_ok=True)
         result.export_dir = dest
         for artifact in (result.path, result.captions_path, result.card_path):

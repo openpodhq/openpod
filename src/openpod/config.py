@@ -216,6 +216,19 @@ class Workspace:
             raise KeyError(
                 f"unknown setting {dotted_key!r}; documented keys: "
                 + ", ".join(sorted(_flat_keys(DEFAULT_SETTINGS))))
+        # export_dir must survive the workspace moving between environments:
+        # an agent in a container once saved its session mount path
+        # (/sessions/<id>/mnt/ws/clips) — dead on the host. An absolute path
+        # inside the workspace is stored relative; genuinely-outside paths
+        # (e.g. ~/Desktop) stay absolute.
+        if (dotted_key == "clip.export_dir" and isinstance(value, str)
+                and value not in ("", "ask")):
+            p = Path(value).expanduser()
+            if p.is_absolute():
+                try:
+                    value = str(p.resolve().relative_to(self.root)) or "."
+                except ValueError:
+                    pass
         settings = self.load_settings()
         node = settings
         parts = dotted_key.split(".")

@@ -25,6 +25,17 @@ All notable changes to OpenPod are documented here. Format loosely follows
   announced in the menu. White remains the schema default; nothing changes
   for users who never answer.
 
+### Fixed
+- **`clip.export_dir` survives the workspace changing environments.** An
+  agent working in a sandboxed session saved its container mount path
+  (`/sessions/<id>/mnt/ws/clips`) as the durable export folder — dead the
+  moment the session ended. Saving an absolute path that lies inside the
+  workspace now stores it relative; at use time a relative export_dir from
+  settings resolves against the workspace root, not the process cwd (an
+  MCP server's cwd is wherever the client launched it). `"."` keeps its
+  documented working-directory meaning, and explicit `out_dir` arguments
+  stay caller-relative.
+
 ### Changed
 - **First-use speaks to the agent, not past it.** The CLI's first-clip
   hint used to read as two commands to run — and an agent driving the

@@ -116,6 +116,34 @@ def test_export_dir_working_directory_choice(workspace, vtt_file,
                for p in r.export_paths)
 
 
+def test_export_dir_inside_workspace_saved_relative(workspace):
+    # An agent in a container saved its session mount path as the durable
+    # export_dir — dead on the host. Inside-the-workspace absolute paths
+    # are stored portable; genuinely-outside paths stay absolute.
+    workspace.set_setting("clip.export_dir", str(workspace.root / "clips"))
+    assert workspace.load_settings()["clip"]["export_dir"] == "clips"
+    outside = str(workspace.root.parent / "elsewhere")
+    workspace.set_setting("clip.export_dir", outside)
+    assert workspace.load_settings()["clip"]["export_dir"] == outside
+
+
+def test_relative_export_dir_resolves_against_workspace_root(
+        workspace, vtt_file, tiny_wav_file, tmp_path, monkeypatch):
+    other_cwd = tmp_path / "elsewhere"
+    other_cwd.mkdir()
+    monkeypatch.chdir(other_cwd)
+    workspace.set_setting("clip.export_dir", "clips")
+    workspace.set_setting("clip.setup_done", True)
+    entry = _entry(workspace, vtt_file)
+    r = clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(tiny_wav_file))
+    # "clips" means the workspace's clips/, wherever the process happens
+    # to be running — never a folder conjured next to the server's cwd
+    assert r.export_dir == workspace.root / "clips"
+    assert (workspace.root / "clips").is_dir()
+    assert not (other_cwd / "clips").exists()
+
+
 def test_ask_sentinel_is_never_a_folder(workspace, vtt_file, tiny_wav_file,
                                         tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
