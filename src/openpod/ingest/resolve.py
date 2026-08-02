@@ -184,7 +184,9 @@ def resolve_full(link: str, *, kind: str | None = None,
 
     if kind == "podcast":
         from .rss import ingest_podcast
-        source, t = ingest_podcast(link, progress=progress)
+        source, t = ingest_podcast(link, asr=asr,
+                                   auto_threshold=asr_auto_threshold,
+                                   progress=progress)
         return Resolution(source=source, transcript=t, origin=origin)
 
     if kind == "file":
@@ -193,13 +195,17 @@ def resolve_full(link: str, *, kind: str | None = None,
 
     if kind in ("apple", "spotify"):
         return _resolve_platform(link, kind, origin, confirmed=confirmed,
-                                 crosswalk=crosswalk)
+                                 crosswalk=crosswalk, asr=asr,
+                                 asr_auto_threshold=asr_auto_threshold,
+                                 progress=progress)
 
     raise UnresolvedLinkError(link, kind=kind, tried=["detect_kind"])
 
 
 def _resolve_platform(link: str, kind: str, origin: SourceRef, *,
-                      confirmed: bool, crosswalk=None) -> Resolution:
+                      confirmed: bool, crosswalk=None, asr: str = "auto",
+                      asr_auto_threshold: float = 180.0,
+                      progress=None) -> Resolution:
     """Apple/Spotify: identity-first resolution with the confirmation gate."""
     ident = _cached_identity(link, kind, crosswalk)
     if ident is not None and ident.feed_url and ident.rss_guid:
@@ -211,7 +217,10 @@ def _resolve_platform(link: str, kind: str, origin: SourceRef, *,
                     None)
         if item is not None:
             source, t = ingest_podcast(ident.feed_url, item=item,
-                                       feed_title=feed.title or ident.show)
+                                       feed_title=feed.title or ident.show,
+                                       asr=asr,
+                                       auto_threshold=asr_auto_threshold,
+                                       progress=progress)
             return Resolution(source=source, transcript=t, origin=origin,
                               identity=ident, confidence=ident.match_confidence,
                               method="crosswalk-cache")
@@ -238,7 +247,9 @@ def _resolve_platform(link: str, kind: str, origin: SourceRef, *,
 
     from .rss import ingest_podcast
     source, t = ingest_podcast(ident.feed_url, item=item,
-                               feed_title=feed.title or ident.show)
+                               feed_title=feed.title or ident.show,
+                               asr=asr, auto_threshold=asr_auto_threshold,
+                               progress=progress)
     ident.duration = ident.duration or source.duration
     return Resolution(source=source, transcript=t, origin=origin,
                       identity=ident, confidence=confidence, method=method)

@@ -264,6 +264,66 @@ class InitNeedsExplicitHome(OpenPodError):
         }
 
 
+class TranscriptUnavailable(OpenPodError):
+    """The feed ships no timed transcript and local ASR is a *decision*,
+    not a default.
+
+    The podcast twin of :class:`CaptionsUnavailable`, with one honest
+    difference: waiting cannot help — a feed with no transcript today will
+    not grow one by re-catching. The real options are to transcribe locally
+    now (priced), or to catch a different source carrying the same episode
+    (e.g. its YouTube link, where captions are free and instant — the
+    crosswalk records the identity, and output links still render on the
+    origin platform).
+    """
+
+    code = "transcript_unavailable"
+
+    def __init__(self, link: str, *, show: Optional[str] = None,
+                 title: Optional[str] = None,
+                 estimate: Optional[dict] = None) -> None:
+        self.link, self.show, self.title = link, show, title
+        self.estimate = estimate or {}
+        human = self.estimate.get("human", "several minutes")
+        what = repr(title) if title else "this episode"
+        super().__init__(
+            f"the feed has no transcript for {what}. Re-run with asr='now' "
+            f"to transcribe locally (~{human}), or catch a different source "
+            "for the same episode (e.g. a YouTube link with captions)."
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        human = self.estimate.get("human", "several minutes")
+        return {
+            "error": self.code,
+            "link": self.link,
+            "show": self.show,
+            "title": self.title,
+            "asr_estimate": self.estimate,
+            "options": [
+                {"option": "asr_now",
+                 "description": "Call catch again with asr='now' to "
+                                "transcribe locally with Whisper — "
+                                f"~{human} on this machine, no tokens or "
+                                "API cost."},
+                {"option": "alternate_source",
+                 "description": "Catch a different link carrying the SAME "
+                                "episode — e.g. its YouTube URL, where "
+                                "captions are free and instant. The "
+                                "crosswalk records the identity either way, "
+                                "so output links still render on the user's "
+                                "platform."},
+            ],
+            "next_step": (
+                "Tell the user this feed ships no transcript and give them "
+                "the choice: transcribe locally now (quote the estimate) or "
+                "supply another source for the episode (a YouTube link with "
+                "captions is instant). Never start a long ASR run without "
+                "telling them."
+            ),
+        }
+
+
 class UnsupportedFormatError(OpenPodError):
     """Content whose type OpenPod does not (deliberately) support."""
 

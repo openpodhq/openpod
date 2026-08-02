@@ -3,7 +3,8 @@
 Uses ``feedparser`` when available (it handles the messy real-world feeds), and
 falls back to a small stdlib ``xml.etree`` parser so the core still works with a
 minimal install. Prefers a timed ``podcast:transcript`` when the publisher
-provides one; otherwise downloads the enclosure and runs local ASR.
+provides one; otherwise local ASR is a *decision*, gated the same way as the
+YouTube path (see :func:`ingest_podcast`) — never a silent multi-minute grind.
 """
 
 from __future__ import annotations
@@ -250,10 +251,23 @@ def _chapters_for(item: FeedItem) -> list[dict]:
 
 def ingest_podcast(link: str, *, item: FeedItem | None = None,
                    feed_title: str | None = None,
+                   asr: str = "auto",
+                   auto_threshold: float = 180.0,
                    progress=None) -> tuple[SourceRef, Transcript]:
-    """Resolve a podcast link (feed URL, or direct enclosure) to (source, transcript)."""
+    """Resolve a podcast link (feed URL, or direct enclosure) to (source, transcript).
+
+    ``asr``: ``"auto"`` (publisher transcript first; ASR runs — announced —
+    only when the transcription is cheap enough that asking would cost more
+    than doing), ``"now"`` (user approved — transcribe on any absence),
+    ``"never"`` (raise instead of ever transcribing). ``auto_threshold`` is
+    the high-estimate cutoff, in seconds, for auto-proceeding without a
+    publisher transcript. ``progress`` is called with a human line before
+    any ASR run starts.
+    """
     from .. import transcript as tx
 
+    if asr not in ("auto", "now", "never"):
+        raise ValueError(f"asr must be auto|now|never, got {asr!r}")
     if item is None:
         # A feed URL: take the most recent episode.
         feed = load_feed(link)
@@ -288,23 +302,45 @@ def ingest_podcast(link: str, *, item: FeedItem | None = None,
         except ValueError:
             pass  # untimed/HTML transcript — fall through to ASR
 
-    # No timed transcript: validate, download the enclosure, run local ASR.
-    # Feeds list whatever they like — the enclosure gets a content-type check
-    # before anything is piped into transcription (explicit rejection beats
-    # incidental library tolerance).
+    # No timed transcript: local ASR is a decision, gated on cost exactly
+    # like the YouTube path — the refusal must fire *before* the enclosure
+    # download so saying no costs nothing.
     if not item.enclosure_url:
         raise ValueError("no transcript and no audio enclosure for this episode")
-    from ..asr import estimate_transcription, transcribe, download_audio
-    from .validate import ensure_media
+    from ..asr import estimate_transcription
+    from ..errors import TranscriptUnavailable
+
+    estimate = estimate_transcription(source.duration)
+    if asr == "never":
+        raise TranscriptUnavailable(source.url or link, show=source.show,
+                                    title=source.title, estimate=estimate)
+    if asr != "now":
+        # Cost-based gate: a short transcription just runs (asking costs
+        # more than doing); a long one surfaces the choice — including the
+        # option of another source whose captions are free and instant.
+        high = estimate.get("high_seconds")
+        cheap = high is not None and high <= auto_threshold
+        if not cheap:
+            raise TranscriptUnavailable(source.url or link, show=source.show,
+                                        title=source.title, estimate=estimate)
 
     if progress:
-        est = estimate_transcription(source.duration)
         progress("no publisher transcript for this episode — downloading the "
-                 f"audio and transcribing locally ({est.get('human', 'several minutes')})")
+                 f"audio and transcribing locally "
+                 f"(~{estimate.get('human', 'several minutes')}; runs on this "
+                 "machine, no tokens or API cost)")
+
+    # Validate, download, transcribe. Feeds list whatever they like — the
+    # enclosure gets a content-type check before anything is piped into
+    # transcription (explicit rejection beats incidental library tolerance).
+    from ..asr import transcribe, download_audio
+    from .validate import ensure_media
+
     info = ensure_media(item.enclosure_url)
     audio = download_audio(info.url)
     t = transcribe(audio)
-    t.notes = "no publisher transcript; transcribed locally"
+    t.notes = ("no publisher transcript; transcribed locally "
+               f"(~{estimate.get('human', '?')} expected)")
     return source, t
 
 
