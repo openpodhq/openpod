@@ -27,6 +27,7 @@ import os
 import queue
 import secrets
 import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -88,6 +89,25 @@ class _Pending:
         self.result: Any = None
 
 
+class _AiRun:
+    """One in-flight "Ask your AI" turn.
+
+    The turn runs on its own thread pumping normalized provider events into a
+    queue; the tab drains that queue over SSE. Decoupling them means a tab that
+    reloads mid-answer doesn't kill the run, and a slow reader doesn't stall the
+    provider.
+    """
+
+    __slots__ = ("id", "events", "cancel", "thread", "started")
+
+    def __init__(self, run_id: str) -> None:
+        self.id = run_id
+        self.events: queue.Queue = queue.Queue()
+        self.cancel = threading.Event()
+        self.thread: Optional[threading.Thread] = None
+        self.started = time.time()
+
+
 class PlayerBridge:
     """The loopback relay. Thread-safe; one instance per MCP-server process."""
 
@@ -109,6 +129,7 @@ class PlayerBridge:
         self._pending: dict[str, _Pending] = {}
         self._auth_fails = 0  # cumulative wrong tokens; lock at _MAX_AUTH_FAILS
         self._outbox: list[dict] = self._load_outbox()
+        self._ai_runs: dict[str, _AiRun] = {}
         self._stopping = threading.Event()
         self._server: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
@@ -278,6 +299,91 @@ class PlayerBridge:
             pending.result = result
             pending.event.set()
 
+    # -- "Ask your AI" turns ------------------------------------------------ #
+
+    def agent_mcp_config(self) -> Path:
+        """Write (and return) the MCP config handed to the spawned agent.
+
+        This is the whole trick behind the feature: ``openpod-mcp`` already
+        re-exports every player action as a ``player_*`` tool that calls back
+        through this bridge to the tab. Point the agent at it and the chat can
+        drive the player without a line of new agent-loop code.
+        """
+        path = self.ws.dot / "agent-mcp.json"
+        _atomic_write(
+            path,
+            json.dumps({"mcpServers": {"openpod": {"command": "openpod-mcp"}}}),
+            mode=0o600,
+        )
+        return path
+
+    def start_ai_turn(self, body: dict) -> dict:
+        """Spawn a turn and return its run id. Never blocks on the model."""
+        from .providers import TurnRequest, get_adapter, run_turn
+
+        adapter = get_adapter(str(body.get("provider") or "claude_local"))
+        if adapter is None:
+            return {"ok": False, "error": {
+                "code": "unknown_provider",
+                "message": f"No AI app called {body.get('provider')!r}.",
+                "fix": "Pick one of the providers from /ai/providers.",
+            }}
+
+        prompt = str(body.get("prompt") or "").strip()
+        if not prompt:
+            return {"ok": False, "error": {"code": "empty_prompt",
+                                           "message": "Nothing to ask."}}
+
+        req = TurnRequest(
+            prompt=prompt,
+            system=body.get("system") or None,
+            model=body.get("model") or None,
+            effort=body.get("effort") or None,
+            session_id=body.get("sessionId") or None,
+            mcp_config=self.agent_mcp_config(),
+            cwd=self.ws.root,
+        )
+        run = _AiRun(uuid.uuid4().hex)
+        with self._lock:
+            self._reap_ai_runs()
+            self._ai_runs[run.id] = run
+
+        def _pump() -> None:
+            try:
+                for event in run_turn(adapter, req, cancel=run.cancel):
+                    run.events.put(event)
+            except Exception as e:  # never let a provider bug wedge the thread
+                run.events.put({"type": "error", "code": "internal",
+                                "message": str(e), "fix": None})
+                run.events.put({"type": "done", "ok": False})
+            finally:
+                run.events.put(_SENTINEL)
+
+        run.thread = threading.Thread(target=_pump, daemon=True)
+        run.thread.start()
+        return {"ok": True, "runId": run.id}
+
+    def _reap_ai_runs(self) -> None:
+        """Drop finished runs. Called under the lock; keeps a long-lived bridge
+        from accumulating one entry per question ever asked."""
+        for rid, run in list(self._ai_runs.items()):
+            if run.thread is not None and not run.thread.is_alive():
+                del self._ai_runs[rid]
+
+    def cancel_ai_turn(self, run_id: str) -> dict:
+        with self._lock:
+            run = self._ai_runs.get(run_id)
+        if run is None:
+            return {"ok": False, "error": {"code": "unknown_run",
+                                           "message": "That turn is not running."}}
+        run.cancel.set()
+        return {"ok": True, "cancelled": True}
+
+    def ai_events(self, run_id: str) -> Optional[queue.Queue]:
+        with self._lock:
+            run = self._ai_runs.get(run_id)
+        return run.events if run is not None else None
+
     def _valid_token(self, token: Optional[str]) -> bool:
         """Constant-time token check with a cumulative lockout. After
         _MAX_AUTH_FAILS wrong tokens the bridge refuses all auth until restart —
@@ -365,6 +471,18 @@ def _make_handler(bridge: PlayerBridge):
             if parsed.path == "/bridge/events":
                 self._sse(parse_qs(parsed.query))
                 return
+            qs = parse_qs(parsed.query)
+            if parsed.path == "/ai/providers":
+                if not bridge._valid_token(qs.get("token", [None])[0]):
+                    self._json(403, {"ok": False, "error": "forbidden"})  # no CORS
+                    return
+                from .providers import detect_all
+
+                self._json(200, {"ok": True, "providers": detect_all()}, cors=True)
+                return
+            if parsed.path == "/ai/stream":
+                self._ai_stream(qs)
+                return
             self._json(404, {"ok": False, "error": "not_found"})
 
         def do_POST(self) -> None:
@@ -375,7 +493,8 @@ def _make_handler(bridge: PlayerBridge):
             parsed = urlparse(self.path)
             token = parse_qs(parsed.query).get("token", [None])[0]
             raw = self._drain()  # always consume the body (keep-alive safety)
-            if parsed.path not in ("/bridge/results", "/bridge/call"):
+            if parsed.path not in ("/bridge/results", "/bridge/call",
+                                   "/ai/turn", "/ai/cancel"):
                 self._json(404, {"ok": False, "error": "not_found"})
                 return
             if not bridge._valid_token(token):
@@ -385,6 +504,15 @@ def _make_handler(bridge: PlayerBridge):
                 body = json.loads(raw or b"{}")
             except ValueError:
                 self._json(400, {"ok": False, "error": "bad_json"}, cors=True)
+                return
+
+            if parsed.path == "/ai/turn":
+                self._json(200, bridge.start_ai_turn(body), cors=True)
+                return
+
+            if parsed.path == "/ai/cancel":
+                run_id = str(body.get("runId") or "")
+                self._json(200, bridge.cancel_ai_turn(run_id), cors=True)
                 return
 
             if parsed.path == "/bridge/call":
@@ -437,6 +565,44 @@ def _make_handler(bridge: PlayerBridge):
                 pass  # tab went away
             finally:
                 bridge._unregister_sink(sink)
+
+        def _ai_stream(self, qs: dict) -> None:
+            """Stream one turn's events to the tab.
+
+            Separate from /bridge/events on purpose: that channel carries
+            commands INTO the tab and must stay open for the tab's whole life,
+            while this one is per-question and ends with the turn. The agent's
+            tool calls still travel the old channel — this is only the answer
+            coming back.
+            """
+            if not bridge._valid_token(qs.get("token", [None])[0]):
+                self._json(403, {"ok": False, "error": "forbidden"})  # no CORS
+                return
+            events = bridge.ai_events(qs.get("run", [""])[0])
+            if events is None:
+                self._json(404, {"ok": False, "error": "unknown_run"}, cors=True)
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self._cors()
+            self.end_headers()
+            try:
+                while not bridge._stopping.is_set():
+                    try:
+                        item = events.get(timeout=_HEARTBEAT_SEC)
+                    except queue.Empty:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                        continue
+                    if item is _SENTINEL:
+                        break
+                    self.wfile.write(b"data: " + json.dumps(item).encode("utf-8") + b"\n\n")
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass  # the tab closed the answer stream; the run finishes anyway
 
     return Handler
 
