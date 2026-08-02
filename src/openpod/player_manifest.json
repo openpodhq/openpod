@@ -1,374 +1,401 @@
 {
-  "actionsVersion": 1,
-  "tools": [
-    {
-      "name": "get_player_state",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "The live player: now-playing episode, position/duration, speed, sleep timer, and queue head.",
-      "params": "none",
-      "returns": "{ nowPlaying: {episodeKey,title,show}|null, positionSec, durationSec, rate, paused, sleep: {kind,...}, queueLength, queueHead }. Use this as the health check and to read ground truth after acting."
-    },
-    {
-      "name": "list_subscriptions",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Every show the user is subscribed to.",
-      "params": "none",
-      "returns": "{ shows: [{feedUrlHash, title, author, feedUrl, addedAt}] }"
-    },
-    {
-      "name": "find_shows",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Resolve a show name to its id. Searches subscriptions; optionally the public directory.",
-      "params": "query (string, required); includeDirectory (bool, default false — also search the public directory for shows not yet subscribed); limit (default 10).",
-      "returns": "{ subscribed: [{feedUrlHash, title, author}], directory: [{feedUrl, title, author}] }. Pass feedUrlHash as `show` to other tools; subscribe with a directory feedUrl."
-    },
-    {
-      "name": "find_episodes",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Resolve an episode by title text. Returns exact episodeKeys for follow-up calls.",
-      "params": "query (string, required); show (feedUrlHash, optional — scope to one show); unplayed (bool, optional); limit (default 10).",
-      "returns": "{ episodes: [{episodeKey, title, show, showTitle, pubDate, durationSec, played}] }"
-    },
-    {
-      "name": "list_episodes",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Episodes of one show, newest first.",
-      "params": "show (feedUrlHash, required); unplayed (bool); since (ISO date lower bound); limit (default 50).",
-      "returns": "{ episodes: [{episodeKey, title, pubDate, durationSec, played}] }"
-    },
-    {
-      "name": "get_queue",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "The up-next queue, in order.",
-      "params": "none",
-      "returns": "{ queue: [{episodeKey, title, show, durationSec}] }"
-    },
-    {
-      "name": "list_bookmarks",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "The user's bookmarks and snips.",
-      "params": "episode (episodeKey, optional — scope to one episode).",
-      "returns": "{ bookmarks: [{id, episodeKey, t, end?, note?, createdAt}] }"
-    },
-    {
-      "name": "get_show_settings",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Per-show playback settings (speed, trims, normalize).",
-      "params": "show (feedUrlHash, required).",
-      "returns": "{ show, settings: {speed?, skipIntroSec?, skipOutroSec?, trim?, normalize?, volumeTrim?} }"
-    },
-    {
-      "name": "get_global_settings",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Global settings (download cap, AI-control toggles).",
-      "params": "none",
-      "returns": "{ downloadCap, agentControlEnabled }"
-    },
-    {
-      "name": "get_transcript",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "The transcript cues for an episode (cache-first; fetches if needed).",
-      "params": "episode (episodeKey, required).",
-      "returns": "{ episode, source, cues: [{start, end, text}] } — or {episode, cues: []} when none is available."
-    },
-    {
-      "name": "get_chapters",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "The chapter list for an episode (cache-first).",
-      "params": "episode (episodeKey, required).",
-      "returns": "{ episode, chapters: [{start, title, url?, imageUrl?}] }"
-    },
-    {
-      "name": "search_heard_local",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Full-text search over what the user ACTUALLY heard (local, accountless parity with the hosted search_heard).",
-      "params": "query (string, required); limit (default 20, max 50).",
-      "returns": "{ results: [{episodeKey, cueStart, cueEnd, text}] } — scoped to the listened-transcript, never un-heard audio. cueStart is the media-seconds position (pass it as `at` to play/seek/share)."
-    },
-    {
-      "name": "list_downloads",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Episodes kept offline.",
-      "params": "none",
-      "returns": "{ downloads: [{episodeKey, title, mode, bytes?, downloadedAt}] }"
-    },
-    {
-      "name": "get_storage_info",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Offline storage usage and durability.",
-      "params": "none",
-      "returns": "{ usage?, quota?, persisted?, downloadCount, knownBytes, opaqueCount }"
-    },
-    {
-      "name": "export_opml",
-      "tier": 0,
-      "session": false,
-      "queueable": false,
-      "summary": "Export subscriptions as an OPML document.",
-      "params": "none",
-      "returns": "{ xml } — a valid OPML string."
-    },
-    {
-      "name": "subscribe",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Subscribe to a podcast by feed URL (or a directory result feedUrl).",
-      "params": "url (string, required) — the RSS feed URL.",
-      "returns": "{ show: {feedUrlHash, title, author, feedUrl} } — the resulting subscription."
-    },
-    {
-      "name": "unsubscribe",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Unsubscribe from a show. The listening record survives; resubscribing restores the map.",
-      "params": "show (feedUrlHash, required).",
-      "returns": "{ show, unsubscribed: true }"
-    },
-    {
-      "name": "import_opml",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Bulk-subscribe from an OPML document. Per-feed failures never abort the run.",
-      "params": "xml (string, required) — OPML content.",
-      "returns": "{ imported, failed, reports: [{url, title, ok, error?}] }"
-    },
-    {
-      "name": "queue_add",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Add an episode to the up-next queue.",
-      "params": "episode (episodeKey, required); position ('next' | 'last', default 'last').",
-      "returns": "{ queue: [{episodeKey, title}], added } — the queue after adding; `added` is false if it was already queued."
-    },
-    {
-      "name": "queue_remove",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Remove an episode from the queue.",
-      "params": "episode (episodeKey, required).",
-      "returns": "{ queue: [...] }"
-    },
-    {
-      "name": "queue_move",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Move a queued episode one slot up or down.",
-      "params": "episode (episodeKey, required); direction ('up' | 'down').",
-      "returns": "{ queue: [...] }"
-    },
-    {
-      "name": "queue_reorder",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Rewrite the queue order. Omitted-but-queued episodes are appended after, never dropped.",
-      "params": "episodes (episodeKey[], required) — the desired order.",
-      "returns": "{ queue: [...] }"
-    },
-    {
-      "name": "queue_clear",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Empty the queue. The listening record is untouched.",
-      "params": "none",
-      "returns": "{ queue: [] }"
-    },
-    {
-      "name": "play",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Play an episode now (streams from the publisher). Resumes at your last position unless `at` is given.",
-      "params": "episode (episodeKey, required); at (seconds, optional — start position).",
-      "returns": "{ nowPlaying: {episodeKey, title}, positionSec }. Requires a live player tab."
-    },
-    {
-      "name": "pause",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Pause playback.",
-      "params": "none",
-      "returns": "{ paused: true, positionSec }"
-    },
-    {
-      "name": "resume",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Resume playback.",
-      "params": "none",
-      "returns": "{ paused: false, positionSec }"
-    },
-    {
-      "name": "seek",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Seek within the current episode. A real seek — recorded honestly, like the UI slider.",
-      "params": "exactly one of: to (absolute seconds) OR by (relative seconds, resolved against the live position).",
-      "returns": "{ positionSec }"
-    },
-    {
-      "name": "skip_to_chapter",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Jump to a chapter of the current episode by index or title.",
-      "params": "exactly one of: index (0-based) OR title (case-insensitive match).",
-      "returns": "{ positionSec, chapter: {start, title} }"
-    },
-    {
-      "name": "next_in_queue",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Play the next queued episode (pops the head).",
-      "params": "none",
-      "returns": "{ nowPlaying: {episodeKey, title} | null }"
-    },
-    {
-      "name": "set_speed",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Set playback speed. Persists per show when `show` is given (matches the UI).",
-      "params": "rate (0<rate<=5); show (feedUrlHash, optional — persist for this show).",
-      "returns": "{ rate }"
-    },
-    {
-      "name": "set_show_settings",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Update per-show playback settings. Audio-path changes re-apply immediately if the show is playing.",
-      "params": "show (feedUrlHash, required); patch ({speed?, skipIntroSec?, skipOutroSec?, trim?, normalize?, volumeTrim?}).",
-      "returns": "{ show, settings }"
-    },
-    {
-      "name": "set_sleep_timer",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Arm or clear the sleep timer.",
-      "params": "mode: {kind:'off'} | {kind:'minutes', minutes} | {kind:'end-of-episode'} | {kind:'end-of-chapter'}.",
-      "returns": "{ sleep: {kind, ...} }"
-    },
-    {
-      "name": "add_bookmark",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Bookmark a moment. Defaults to the now-playing episode and current position.",
-      "params": "episode (episodeKey, optional); at (seconds, optional); note (string, optional).",
-      "returns": "{ bookmark: {id, episodeKey, t, note?} }"
-    },
-    {
-      "name": "add_snip",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Bookmark a range (a snip). Snaps to cue boundaries when a transcript exists.",
-      "params": "episode (episodeKey, optional — defaults to now-playing); start (seconds); end (seconds); note (optional).",
-      "returns": "{ bookmark: {id, episodeKey, t, end, note?} }"
-    },
-    {
-      "name": "remove_bookmark",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Delete a bookmark or snip by id.",
-      "params": "id (string, required).",
-      "returns": "{ id, removed: true }"
-    },
-    {
-      "name": "mark_played",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Mark episodes as played (a synthetic full-length listen; rendered as its own state, never \"heard\").",
-      "params": "episodes (episodeKey[], required).",
-      "returns": "{ marked, skippedNoDuration: [title] }"
-    },
-    {
-      "name": "download_episode",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Download an episode for offline (into the browser cache; audio never touches OpenPod).",
-      "params": "episode (episodeKey, required).",
-      "returns": "{ episode, mode: \"cors\"|\"opaque\", bytes? }"
-    },
-    {
-      "name": "remove_download",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Remove an offline download.",
-      "params": "episode (episodeKey, required).",
-      "returns": "{ episode, removed: true }"
-    },
-    {
-      "name": "set_download_cap",
-      "tier": 1,
-      "session": false,
-      "queueable": true,
-      "summary": "Set the max number of episodes kept offline (evicts over the cap).",
-      "params": "count (int 1..500).",
-      "returns": "{ downloadCap }"
-    },
-    {
-      "name": "share_moment",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Build a shareable deep link to a moment in an episode. Returns the link; posts nowhere.",
-      "params": "episode (episodeKey, required); at (seconds, required).",
-      "returns": "{ url }"
-    },
-    {
-      "name": "open_view",
-      "tier": 1,
-      "session": true,
-      "queueable": false,
-      "summary": "Bring the UI along — select a show/episode, open a panel tab, now-playing, or settings.",
-      "params": "target: {kind:'show',show} | {kind:'episode',episode} | {kind:'tab',tab} | {kind:'now-playing'} | {kind:'settings'}.",
-      "returns": "{ opened: true }"
-    }
-  ]
+    "actionsVersion": 1,
+    "tools": [
+        {
+            "name": "get_player_state",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "The live player: now-playing episode, position/duration, speed, sleep timer, and queue head.",
+            "params": "none",
+            "returns": "{ nowPlaying: {episodeKey,title,show}|null, positionSec, durationSec, rate, paused, sleep: {kind,...}, queueLength, queueHead }. Use this as the health check and to read ground truth after acting."
+        },
+        {
+            "name": "list_subscriptions",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Every show the user is subscribed to.",
+            "params": "none",
+            "returns": "{ shows: [{feedUrlHash, title, author, feedUrl, addedAt}] }"
+        },
+        {
+            "name": "find_shows",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Resolve a show name to its id. Searches subscriptions; optionally the public directory.",
+            "params": "query (string, required); includeDirectory (bool, default false — also search the public directory for shows not yet subscribed); limit (default 10).",
+            "returns": "{ subscribed: [{feedUrlHash, title, author}], directory: [{feedUrl, title, author}] }. Pass feedUrlHash as `show` to other tools; subscribe with a directory feedUrl."
+        },
+        {
+            "name": "find_episodes",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Resolve an episode by title text. Returns exact episodeKeys for follow-up calls.",
+            "params": "query (string, required); show (feedUrlHash, optional — scope to one show); unplayed (bool, optional); limit (default 10).",
+            "returns": "{ episodes: [{episodeKey, title, show, showTitle, pubDate, durationSec, played}] }"
+        },
+        {
+            "name": "list_episodes",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Episodes of one show, newest first.",
+            "params": "show (feedUrlHash, required); unplayed (bool); since (ISO date lower bound); limit (default 50).",
+            "returns": "{ episodes: [{episodeKey, title, pubDate, durationSec, played}] }"
+        },
+        {
+            "name": "get_queue",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "The up-next queue, in order.",
+            "params": "none",
+            "returns": "{ queue: [{episodeKey, title, show, durationSec}] }"
+        },
+        {
+            "name": "list_bookmarks",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "The user's bookmarks and snips.",
+            "params": "episode (episodeKey, optional — scope to one episode).",
+            "returns": "{ bookmarks: [{id, episodeKey, t, end?, note?, createdAt}] }"
+        },
+        {
+            "name": "get_show_settings",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Per-show playback settings (speed, trims, normalize).",
+            "params": "show (feedUrlHash, required).",
+            "returns": "{ show, settings: {speed?, skipIntroSec?, skipOutroSec?, trim?, normalize?, volumeTrim?} }"
+        },
+        {
+            "name": "get_global_settings",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Global settings (download cap, AI-control toggles).",
+            "params": "none",
+            "returns": "{ downloadCap, agentControlEnabled }"
+        },
+        {
+            "name": "get_transcript",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "The transcript cues for an episode (cache-first; fetches if needed).",
+            "params": "episode (episodeKey, required).",
+            "returns": "{ episode, source, cues: [{start, end, text}] } — or {episode, cues: []} when none is available."
+        },
+        {
+            "name": "get_chapters",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "The chapter list for an episode (cache-first).",
+            "params": "episode (episodeKey, required).",
+            "returns": "{ episode, chapters: [{start, title, url?, imageUrl?}] }"
+        },
+        {
+            "name": "search_heard_local",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Full-text search over what the user ACTUALLY heard (local, accountless parity with the hosted search_heard).",
+            "params": "query (string, required); limit (default 20, max 50).",
+            "returns": "{ results: [{episodeKey, cueStart, cueEnd, text}] } — scoped to the listened-transcript, never un-heard audio. cueStart is the media-seconds position (pass it as `at` to play/seek/share)."
+        },
+        {
+            "name": "list_downloads",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Episodes kept offline.",
+            "params": "none",
+            "returns": "{ downloads: [{episodeKey, title, mode, bytes?, downloadedAt}] }"
+        },
+        {
+            "name": "get_storage_info",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Offline storage usage and durability.",
+            "params": "none",
+            "returns": "{ usage?, quota?, persisted?, downloadCount, knownBytes, opaqueCount }"
+        },
+        {
+            "name": "export_opml",
+            "tier": 0,
+            "session": false,
+            "queueable": false,
+            "summary": "Export subscriptions as an OPML document.",
+            "params": "none",
+            "returns": "{ xml } — a valid OPML string."
+        },
+        {
+            "name": "subscribe",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Subscribe to a podcast by feed URL (or a directory result feedUrl).",
+            "params": "url (string, required) — the RSS feed URL.",
+            "returns": "{ show: {feedUrlHash, title, author, feedUrl} } — the resulting subscription."
+        },
+        {
+            "name": "unsubscribe",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Unsubscribe from a show. The listening record survives; resubscribing restores the map.",
+            "params": "show (feedUrlHash, required).",
+            "returns": "{ show, unsubscribed: true }"
+        },
+        {
+            "name": "import_opml",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Bulk-subscribe from an OPML document. Per-feed failures never abort the run.",
+            "params": "xml (string, required) — OPML content.",
+            "returns": "{ imported, failed, reports: [{url, title, ok, error?}] }"
+        },
+        {
+            "name": "queue_add",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Add an episode to the up-next queue.",
+            "params": "episode (episodeKey, required); position ('next' | 'last', default 'last').",
+            "returns": "{ queue: [{episodeKey, title}], added } — the queue after adding; `added` is false if it was already queued."
+        },
+        {
+            "name": "queue_remove",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Remove an episode from the queue.",
+            "params": "episode (episodeKey, required).",
+            "returns": "{ queue: [...] }"
+        },
+        {
+            "name": "queue_move",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Move a queued episode one slot up or down.",
+            "params": "episode (episodeKey, required); direction ('up' | 'down').",
+            "returns": "{ queue: [...] }"
+        },
+        {
+            "name": "queue_reorder",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Rewrite the queue order. Omitted-but-queued episodes are appended after, never dropped.",
+            "params": "episodes (episodeKey[], required) — the desired order.",
+            "returns": "{ queue: [...] }"
+        },
+        {
+            "name": "queue_clear",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Empty the queue. The listening record is untouched.",
+            "params": "none",
+            "returns": "{ queue: [] }"
+        },
+        {
+            "name": "play",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Play an episode now (streams from the publisher). Resumes at your last position unless `at` is given.",
+            "params": "episode (episodeKey, required); at (seconds, optional — start position).",
+            "returns": "{ nowPlaying: {episodeKey, title}, positionSec }. Requires a live player tab."
+        },
+        {
+            "name": "pause",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Pause playback.",
+            "params": "none",
+            "returns": "{ paused: true, positionSec }"
+        },
+        {
+            "name": "resume",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Resume playback.",
+            "params": "none",
+            "returns": "{ paused: false, positionSec }"
+        },
+        {
+            "name": "seek",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Seek within the current episode. A real seek — recorded honestly, like the UI slider.",
+            "params": "exactly one of: to (absolute seconds) OR by (relative seconds, resolved against the live position).",
+            "returns": "{ positionSec }"
+        },
+        {
+            "name": "skip_to_chapter",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Jump to a chapter of the current episode by index or title.",
+            "params": "exactly one of: index (0-based) OR title (case-insensitive match).",
+            "returns": "{ positionSec, chapter: {start, title} }"
+        },
+        {
+            "name": "next_in_queue",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Play the next queued episode (pops the head).",
+            "params": "none",
+            "returns": "{ nowPlaying: {episodeKey, title} | null }"
+        },
+        {
+            "name": "set_speed",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Set playback speed. Persists per show when `show` is given (matches the UI).",
+            "params": "rate (0<rate<=5); show (feedUrlHash, optional — persist for this show).",
+            "returns": "{ rate }"
+        },
+        {
+            "name": "set_show_settings",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Update per-show playback settings. Audio-path changes re-apply immediately if the show is playing.",
+            "params": "show (feedUrlHash, required); patch ({speed?, skipIntroSec?, skipOutroSec?, trim?, normalize?, volumeTrim?}).",
+            "returns": "{ show, settings }"
+        },
+        {
+            "name": "set_sleep_timer",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Arm or clear the sleep timer.",
+            "params": "mode: {kind:'off'} | {kind:'minutes', minutes} | {kind:'end-of-episode'} | {kind:'end-of-chapter'}.",
+            "returns": "{ sleep: {kind, ...} }"
+        },
+        {
+            "name": "add_bookmark",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Bookmark a moment. Defaults to the now-playing episode and current position.",
+            "params": "episode (episodeKey, optional); at (seconds, optional); note (string, optional).",
+            "returns": "{ bookmark: {id, episodeKey, t, note?} }"
+        },
+        {
+            "name": "add_snip",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Bookmark a range (a snip). Snaps to cue boundaries when a transcript exists.",
+            "params": "episode (episodeKey, optional — defaults to now-playing); start (seconds); end (seconds); note (optional).",
+            "returns": "{ bookmark: {id, episodeKey, t, end, note?} }"
+        },
+        {
+            "name": "remove_bookmark",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Delete a bookmark or snip by id.",
+            "params": "id (string, required).",
+            "returns": "{ id, removed: true }"
+        },
+        {
+            "name": "mark_played",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Mark episodes as played (a synthetic full-length listen; rendered as its own state, never \"heard\").",
+            "params": "episodes (episodeKey[], required).",
+            "returns": "{ marked, skippedNoDuration: [title] }"
+        },
+        {
+            "name": "download_episode",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Download an episode for offline (into the browser cache; audio never touches OpenPod).",
+            "params": "episode (episodeKey, required).",
+            "returns": "{ episode, mode: \"cors\"|\"opaque\", bytes? }"
+        },
+        {
+            "name": "remove_download",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Remove an offline download.",
+            "params": "episode (episodeKey, required).",
+            "returns": "{ episode, removed: true }"
+        },
+        {
+            "name": "set_download_cap",
+            "tier": 1,
+            "session": false,
+            "queueable": true,
+            "summary": "Set the max number of episodes kept offline (evicts over the cap).",
+            "params": "count (int 1..500).",
+            "returns": "{ downloadCap }"
+        },
+        {
+            "name": "share_moment",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Build a shareable deep link to a moment in an episode. Returns the link; posts nowhere.",
+            "params": "episode (episodeKey, required); at (seconds, required).",
+            "returns": "{ url }"
+        },
+        {
+            "name": "open_view",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Bring the UI along — select a show/episode, open a panel tab, now-playing, or settings.",
+            "params": "target: {kind:'show',show} | {kind:'episode',episode} | {kind:'tab',tab} | {kind:'now-playing'} | {kind:'settings'}.",
+            "returns": "{ opened: true }"
+        },
+        {
+            "name": "play_segments",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Play a set of moments back to back, right now — the answer, as audio.",
+            "params": "segments: [{episode, start, end, title?, reason?}] (media seconds). Ordered by start automatically.",
+            "returns": "{ playing: n, first: {episode, start} }. Jumps between moments are recorded as automatic, so material skipped over stays UNHEARD on the listened map."
+        },
+        {
+            "name": "plan_playback",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Queue moments to play at a boundary instead of now — \"jump there after this chapter\".",
+            "params": "moments: [{episode, start, end, title?, reason?}]; after: 'now' | 'chapter' | 'episode' (default 'chapter').",
+            "returns": "{ moments: n, after, boundary }. `boundary` is the media second it fires at. Prefer this over `seek` when the listener did not ask to move right now — do not yank the playhead mid-sentence to show off a find."
+        },
+        {
+            "name": "clear_playback_plan",
+            "tier": 1,
+            "session": true,
+            "queueable": false,
+            "summary": "Drop the queued playback plan (and stop it if it is running).",
+            "params": "none",
+            "returns": "{ cleared: true }"
+        }
+    ]
 }
