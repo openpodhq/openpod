@@ -126,7 +126,7 @@ def _prep_low_confidence(monkeypatch, confidence):
     monkeypatch.setattr("openpod.ingest.spotify.prepare_spotify", fake_prepare)
     monkeypatch.setattr(
         "openpod.ingest.rss.ingest_podcast",
-        lambda feed_url, item=None, feed_title=None: (
+        lambda feed_url, item=None, feed_title=None, **kw: (
             origin_ref("https://example.com/feed.xml", "podcast"),
             _tiny_transcript()))
 
@@ -196,7 +196,7 @@ def test_cached_identity_skips_reidentification(monkeypatch, workspace):
     monkeypatch.setattr("openpod.ingest.rss.load_feed", lambda url: _feed())
     monkeypatch.setattr(
         "openpod.ingest.rss.ingest_podcast",
-        lambda feed_url, item=None, feed_title=None: (
+        lambda feed_url, item=None, feed_title=None, **kw: (
             origin_ref("https://example.com/feed.xml", "podcast"),
             _tiny_transcript()))
 

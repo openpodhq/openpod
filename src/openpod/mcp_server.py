@@ -63,7 +63,13 @@ def build_server():
         `error: "captions_unavailable"` when the transcription would be
         LONG and captions are merely throttled (YouTube 429) — then give
         the user the choice from `options`: wait a few minutes and re-catch
-        (free), or re-call with asr="now" (the `asr_estimate` prices it)."""
+        (free), or re-call with asr="now" (the `asr_estimate` prices it).
+        `error: "transcript_unavailable"` is the podcast twin: the feed
+        ships no transcript and transcription would be long. Waiting won't
+        help there — offer the `options`: re-call with asr="now" (priced by
+        `asr_estimate`), or catch a different link carrying the same
+        episode (e.g. its YouTube URL — captions are free and instant, and
+        the crosswalk keeps the identity)."""
         from .catch import catch as _catch
         from .cli import _catch_dict
         from .errors import OpenPodError
