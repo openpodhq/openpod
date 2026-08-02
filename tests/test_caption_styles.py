@@ -166,6 +166,7 @@ def _fake_ffmpeg(monkeypatch, tmp_path):
 def test_burn_writes_ass_with_keyword_overrides(workspace, vtt_file,
                                                 tmp_path, monkeypatch):
     _fake_ffmpeg(monkeypatch, tmp_path)
+    workspace.set_setting("clip.setup_done", True)
     entry = catch("https://example.com/ep1", workspace=workspace,
                   kind="podcast", transcript_path=str(vtt_file)).entry
     marked = tmp_path / "marked.srt"
@@ -252,6 +253,7 @@ def test_clip_burn_threads_rtl_through_for_hebrew(workspace, vtt_file,
     from openpod.ass import _RLE, _RTL_FONT
     _fake_ffmpeg(monkeypatch, tmp_path)
     workspace.set_setting("locale.preferred_language", "he")
+    workspace.set_setting("clip.setup_done", True)
     entry = catch("https://example.com/ep1", workspace=workspace,
                   kind="podcast", transcript_path=str(vtt_file)).entry
     tr = entry.read_transcript(); tr.language = "he"; entry.write_transcript(tr)

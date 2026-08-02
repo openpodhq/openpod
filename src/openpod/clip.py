@@ -23,6 +23,7 @@ from .asr import has_ffmpeg
 from .card import render_card_html, render_card_png
 from .config import Workspace
 from .deeplink import build_deeplink
+from .errors import NeedsDecision
 from .library import Library, LibraryEntry
 from .models import (SourceRef, Transcript, format_timestamp, slugify,
                      spoken_spans)
@@ -236,6 +237,16 @@ def clip(entry_id_or_link: str, start: float, end: float, *,
             f"no caught episode with id {entry_id_or_link!r}. "
             "Run `openpod catch <link>` first, then clip by its entry id."
         )
+
+    # The pixel gate: burning captions before first-use setup would bake
+    # defaults the user never chose into a file they'll post. Refuse with
+    # the questions instead — a refusal is the one message every caller
+    # reads (advisory payloads alone were ignored in the field). Soft and
+    # off modes still cut; they leave nothing user-visible behind.
+    clip_settings = ws.effective_settings()["clip"]
+    if ((captions or clip_settings["captions"]) == "burn"
+            and not clip_settings["setup_done"]):
+        raise NeedsDecision(first_use_questions(ws))
 
     transcript = entry.read_transcript()
     source = entry.source()

@@ -12,11 +12,13 @@ them rebuilds a worse version of the product beside the product.
 **The user decides** anything that ends up in visible pixels or shapes
 their disk: where exports land, captions off/soft/burned, caption color
 and style, clip dimensions, headline plates, speaker labels. When a
-result carries `first_use`, those are the user's setup questions —
-relay them as one multiple-choice message, save the answers with
-`openpod settings <key> <value>`, and set `clip.setup_done true` only
-after the user has picked or explicitly skipped (skipping keeps
-defaults). Never answer them on the user's behalf.
+result carries `first_use` — or a burn is refused with
+`needs_decision` (no file is produced until the user has chosen) —
+those are the user's setup questions: relay them as one multiple-choice
+message, save the answers with `openpod settings <key> <value>`, set
+`clip.setup_done true` only after the user has picked or explicitly
+skipped (skipping keeps defaults), then re-run. Never answer them on
+the user's behalf.
 
 **You decide** the mechanics: which command to run, how to find the
 moment, how to phrase the report. Anything the user won't see or keep

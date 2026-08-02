@@ -77,6 +77,47 @@ def test_setup_done_is_a_documented_setting(workspace):
     assert workspace.effective_settings()["clip"]["caption_style"]["color"] == "#FFE14D"
 
 
+def test_burn_refuses_on_unconfigured_workspace(workspace, vtt_file,
+                                                tiny_wav_file):
+    # The pixel gate: an advisory payload can be ignored (and was, in the
+    # field) — a burn before setup returns a refusal and NO file.
+    from openpod.errors import NeedsDecision
+
+    entry = _entry(workspace, vtt_file)
+    with pytest.raises(NeedsDecision) as ei:
+        clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(tiny_wav_file), captions="burn")
+    d = ei.value.to_dict()
+    assert d["error"] == "needs_decision"
+    assert d["first_use"]["questions"]
+    assert "user's decisions" in d["next_step"].lower()
+    # a refusal leaves no partial deliverable behind
+    clips = entry.clips_dir
+    assert not clips.exists() or not any(clips.iterdir())
+
+    # answered setup unlocks the exact same call
+    workspace.set_setting("clip.setup_done", True)
+    r = clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(tiny_wav_file), captions="burn")
+    assert r.path.exists()
+
+
+def test_burn_from_settings_is_gated_too(workspace, vtt_file, tiny_wav_file):
+    # burn configured via settings (not the call) hits the same gate —
+    # the mode's origin doesn't change whose decision the pixels are
+    from openpod.errors import NeedsDecision
+
+    workspace.set_setting("clip.captions", "burn")
+    entry = _entry(workspace, vtt_file)
+    with pytest.raises(NeedsDecision):
+        clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(tiny_wav_file))
+    # soft and off still cut on an unconfigured workspace (advisory only)
+    r = clip(entry.entry_id, 5, 20, workspace=workspace,
+             audio_path=str(tiny_wav_file), captions="soft")
+    assert r.path.exists() and r.first_use is not None
+
+
 def test_cli_first_use_render_addresses_the_agent(workspace, capsys):
     # The CLI print is usually read by an agent driving the shell. It must
     # open with whose decisions these are and render every choice inline —

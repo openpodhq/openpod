@@ -9,6 +9,9 @@ from openpod.models import Cue, SourceRef, Transcript
 
 
 def _entry(workspace, vtt_file):
+    # Caption-mechanics tests run on a configured workspace — the
+    # needs_decision pixel gate has its own tests in test_clip_setup.py.
+    workspace.set_setting("clip.setup_done", True)
     return catch("https://example.com/ep1", workspace=workspace,
                  kind="podcast", transcript_path=str(vtt_file)).entry
 

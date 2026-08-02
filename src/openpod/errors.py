@@ -82,6 +82,44 @@ class NeedsConfirmation(OpenPodError):
         }
 
 
+class NeedsDecision(OpenPodError):
+    """Burning pixels on an unconfigured workspace is the user's call.
+
+    Raised when a burn is requested before first-use setup has run: the
+    setup questions ship in the payload; the interface presents them to the
+    user, saves the answers via settings (plus ``clip.setup_done=true``),
+    and re-runs. Only the user may skip — skipping keeps defaults.
+
+    A refusal, not an advisory: field testing showed weaker models ignore
+    an advisory ``first_use`` block attached to a successful result and
+    ship the defaults, but every model reads a tool call that returns no
+    file."""
+
+    code = "needs_decision"
+
+    def __init__(self, questions: dict) -> None:
+        self.questions = questions
+        super().__init__(
+            "first clip in this workspace and the request would burn pixels "
+            "— the caption/export choices belong to the user. Present the "
+            "first_use questions, save the answers, then re-run."
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": self.code,
+            "first_use": self.questions,
+            "next_step": (
+                "These are the user's decisions, not yours. Present the "
+                "questions ONCE as one multiple-choice message, save each "
+                "answer with the settings tool, set clip.setup_done=true, "
+                "and re-run this exact call. If the user explicitly skips, "
+                "set clip.setup_done=true and re-run with defaults. Never "
+                "answer on the user's behalf."
+            ),
+        }
+
+
 class CaptionsUnavailable(OpenPodError):
     """Captions failed and falling back to local ASR is a *decision*, not
     a default.

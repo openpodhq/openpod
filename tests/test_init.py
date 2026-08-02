@@ -10,12 +10,14 @@ def test_init_creates_workspace_and_contract(tmp_path, capsys):
     doc = (tmp_path / AGENTS_BASENAME).read_text(encoding="utf-8")
     assert doc == agents_md_text()
     # the load-bearing clauses: ask-don't-answer, product-owned
-    # presentation, clean masters, no names from memory
-    lower = doc.lower()
+    # presentation, clean masters, no names from memory (whitespace
+    # collapsed — prose wrapping must not break the contract check)
+    lower = " ".join(doc.lower().split())
     assert "the user decides" in lower
     assert "never answer them on the user's behalf" in lower
-    assert "openpod skills" in doc
-    assert ".openpod/library/" in doc
+    assert "needs_decision" in lower
+    assert "openpod skills" in lower
+    assert ".openpod/library/" in lower
     assert "name from memory" in lower
     out = capsys.readouterr().out
     assert AGENTS_BASENAME in out

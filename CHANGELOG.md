@@ -6,6 +6,18 @@ All notable changes to OpenPod are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The pixel gate: burn refuses `needs_decision` on an unconfigured
+  workspace.** A burn requested (by argument or settings) before first-use
+  setup no longer produces a file with baked-in defaults — it raises a
+  structured `needs_decision` carrying the setup questions and the
+  contract (present to the user, save answers, `clip.setup_done=true`,
+  re-run; only the user may skip). Soft/off cuts still succeed with the
+  advisory `first_use` block. Motivated by the cross-agent field test:
+  one agent ignored the advisory payload entirely and shipped default
+  pixels — a refusal is the one message every caller reads. The MCP clip
+  tool returns structured OpenPod errors as data instead of stack traces.
+
+### Added
 - **`openpod init` — the workspace front door.** Creates `.openpod/` and
   writes `AGENTS.md` at the workspace root: the agent contract — who
   decides what (everything that lands in visible pixels belongs to the

@@ -148,22 +148,30 @@ def build_server():
         especially for RTL text. Karaoke lights words as spoken and needs
         word_level=True (falls back to keyword styling with a note).
 
-        FIRST USE: when the result carries `first_use`, this workspace has
-        never configured clipping — and those are the USER's decisions, not
-        yours. Ask its questions ONCE, in one message, as multiple choice
-        (never a form, never prose, never answered on the user's behalf),
-        save each answer via the settings tool, and set clip.setup_done=true
-        only after the user has picked or explicitly skipped (skipping keeps
-        defaults — never ask twice). Until it's answered, don't silently pick
-        presentation defaults like hidden sidecar captions when the user
-        asked for a social clip."""
+        FIRST USE: this workspace's clip defaults are the USER's decisions,
+        not yours. A burn on an unconfigured workspace is REFUSED — the
+        result is `{error: "needs_decision", first_use: …}` and no file is
+        produced. A soft/off cut succeeds but carries the same questions as
+        `first_use`. Either way: ask the questions ONCE, in one message, as
+        multiple choice (never a form, never prose, never answered on the
+        user's behalf), save each answer via the settings tool, set
+        clip.setup_done=true only after the user has picked or explicitly
+        skipped (skipping keeps defaults — never ask twice), then re-run.
+        Until it's answered, don't silently pick presentation defaults like
+        hidden sidecar captions when the user asked for a social clip."""
         from .clip import clip as _clip
+        from .errors import OpenPodError
 
-        r = _clip(entry_id, start, end, workspace=_workspace(), snap=snap,
-                  video=video, captions=captions, lang=lang,
-                  captions_file=captions_file, word_level=word_level,
-                  label=label, label_text=label_text, hook=hook,
-                  aspect=aspect, style=style, out_dir=out_dir)
+        try:
+            r = _clip(entry_id, start, end, workspace=_workspace(), snap=snap,
+                      video=video, captions=captions, lang=lang,
+                      captions_file=captions_file, word_level=word_level,
+                      label=label, label_text=label_text, hook=hook,
+                      aspect=aspect, style=style, out_dir=out_dir)
+        except OpenPodError as e:
+            # Structured refusals (needs_decision etc.) are data the agent
+            # branches on, not stack traces.
+            return e.to_dict()
         return {
             "path": str(r.path),
             "start": r.start,

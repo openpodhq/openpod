@@ -57,8 +57,12 @@ to downstream tools.
    `captions(entry, start, end, verify_path=<translated.srt>)`. Gaps mean
    dropped speech; restore before going further.
 5. **Burn (only on request, only as a derivative)**: re-run `clip` with
-   `captions="burn"`, `out_dir`, and `captions_file=<verified .srt>`. The
-   burn refuses unverified translations and impossible capability, and the
+   `captions="burn"`, `out_dir`, and `captions_file=<verified .srt>`. On a
+   workspace that never ran first-use setup the burn is REFUSED with
+   `needs_decision` — no file until the user has answered the setup
+   questions (present them, save, `clip.setup_done=true`, re-run; only
+   the user may skip). The burn also
+   refuses unverified translations and impossible capability, and the
    social file lands only in the export folder. For RTL burns, open
    `verify.png` (start/mid/end frames) and actually look — boxes instead of
    Hebrew glyphs means the font needs fixing, and the user hears that from

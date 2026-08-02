@@ -10,6 +10,9 @@ from openpod.models import SourceRef
 
 
 def _entry(workspace, vtt_file):
+    # These tests exercise caption/settings mechanics on a configured
+    # workspace; the needs_decision gate is tested in test_clip_setup.py.
+    workspace.set_setting("clip.setup_done", True)
     return catch("https://example.com/ep1", workspace=workspace,
                  kind="podcast", transcript_path=str(vtt_file)).entry
 
