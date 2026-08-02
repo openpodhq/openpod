@@ -47,8 +47,11 @@ the relevant skill before any multi-step flow:
 
 ## Non-negotiable hygiene
 
-- Never write anything under `.openpod/library/` — masters stay clean;
-  working files belong in the export folder.
+- Never write working files — scripts, venvs, media derivatives, preview
+  frames — under `.openpod/library/`; clip masters stay clean. Cited text
+  artifacts are different: briefings, summaries, and notes belong INSIDE
+  the entry's library folder via the product's own flow (`briefing.md`,
+  `save_summary`, `note`) — that is what the scaffold is for.
 - Never type a speaker's name from memory — labels come from structured
   metadata (`speakers.yaml`) or from the user.
 - Surface `capability_note` from any result to the user verbatim.
