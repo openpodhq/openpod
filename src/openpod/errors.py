@@ -218,6 +218,52 @@ class WorkspaceMismatchError(OpenPodError):
         }
 
 
+class InitNeedsExplicitHome(OpenPodError):
+    """``openpod init`` with ``$OPENPOD_HOME`` set must say where.
+
+    The mismatch guard cannot protect init in a fresh directory — there is
+    no rival ``.openpod/`` yet, just an env var silently redirecting the
+    new workspace somewhere the caller cannot see. That is exactly how the
+    field incident's half-made test workspaces happened. So init refuses
+    whenever the env var would pick the target: an explicit ``--home`` is
+    the only way to create a workspace while ``$OPENPOD_HOME`` is set
+    (unless the current directory already lies inside that workspace, where
+    there is nothing to disambiguate).
+    """
+
+    code = "init_needs_home"
+
+    def __init__(self, env_root, cwd) -> None:
+        self.env_root, self.cwd = str(env_root), str(cwd)
+        super().__init__(
+            f"refusing to init: $OPENPOD_HOME is set ({self.env_root}) and "
+            f"would silently pick where the workspace lands. Re-run with "
+            f"--home <path> to say where — e.g. --home {self.cwd} for the "
+            f"current directory."
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": self.code,
+            "env_root": self.env_root,
+            "cwd": self.cwd,
+            "options": [
+                {"option": "init_here",
+                 "description": "Create the workspace in the current "
+                                f"directory — re-run with --home {self.cwd}"},
+                {"option": "init_env_workspace",
+                 "description": "Initialize the $OPENPOD_HOME library — "
+                                f"re-run with --home {self.env_root}"},
+            ],
+            "next_step": (
+                "$OPENPOD_HOME would decide where this new workspace lands, "
+                "and that redirect is invisible. If it is not obvious which "
+                "location the user means, ask — then re-run init with an "
+                "explicit --home."
+            ),
+        }
+
+
 class UnsupportedFormatError(OpenPodError):
     """Content whose type OpenPod does not (deliberately) support."""
 

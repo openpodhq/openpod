@@ -329,6 +329,15 @@ def _cmd_init(args) -> int:
         print(agents_md_text())
         return 0
     ws = _ws(args, write=True)
+    # init in a fresh directory has no rival .openpod for the mismatch
+    # guard to see — with $OPENPOD_HOME choosing the target, the redirect
+    # is invisible. Require --home unless the cwd already lies inside the
+    # env workspace (then there is nothing to disambiguate).
+    cwd = Path.cwd().resolve()
+    if ws.origin == "env" and not cwd.is_relative_to(ws.root):
+        from .errors import InitNeedsExplicitHome
+
+        raise InitNeedsExplicitHome(ws.root, cwd)
     created = not ws.exists()
     ws.ensure()
     target = ws.root / AGENTS_BASENAME

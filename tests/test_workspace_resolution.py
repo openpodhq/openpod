@@ -147,6 +147,47 @@ def test_explicit_home_may_also_choose_the_env_workspace(env_ws, cwd_ws):
     assert (env_ws / DOTDIR / "settings.yaml").exists()
 
 
+def test_init_in_a_fresh_dir_requires_home_when_env_is_set(
+        env_ws, tmp_path, monkeypatch, capsys):
+    # The incident's blind spot: no rival .openpod in cwd, so the mismatch
+    # guard is silent — but the env var would redirect the new workspace.
+    monkeypatch.chdir(tmp_path)
+    rc = main(["init"])
+    assert rc == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"] == "init_needs_home"
+    assert payload["env_root"] == str(env_ws.resolve())
+    assert not (env_ws / "AGENTS.md").exists()
+    assert not (tmp_path / DOTDIR).exists()
+
+
+def test_init_with_explicit_home_proceeds(env_ws, tmp_path, monkeypatch,
+                                          capsys):
+    monkeypatch.chdir(tmp_path)
+    assert main(["--home", str(tmp_path), "init"]) == 0
+    assert (tmp_path / DOTDIR).is_dir()
+    assert (tmp_path / "AGENTS.md").exists()
+    assert not (env_ws / "AGENTS.md").exists()
+
+
+def test_init_inside_the_env_workspace_needs_no_home(env_ws, monkeypatch,
+                                                     capsys):
+    # cwd already belongs to the $OPENPOD_HOME workspace — nothing to
+    # disambiguate, and the output names the env var that picked the target.
+    sub = env_ws / "notes"
+    sub.mkdir()
+    monkeypatch.chdir(sub)
+    assert main(["init"]) == 0
+    assert (env_ws / "AGENTS.md").exists()
+    assert "OPENPOD_HOME" in capsys.readouterr().out
+
+
+def test_init_print_is_exempt(env_ws, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    assert main(["init", "--print"]) == 0
+    assert "error" not in capsys.readouterr().err
+
+
 def test_no_warning_without_a_conflict(env_ws, tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["list"]) == 0

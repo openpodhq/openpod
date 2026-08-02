@@ -23,8 +23,11 @@ All notable changes to OpenPod are documented here. Format loosely follows
   a root is passed explicitly (so MCP servers, whose cwd is meaningless
   and who pass `OPENPOD_HOME` as an argument, are untouched), and treats
   `~/.openpod` — the global persona layer — as no rival. `openpod init`
-  now also says `(via $OPENPOD_HOME)` when the env var chose where the
-  workspace landed.
+  closes the guard's blind spot: in a fresh directory there is no rival
+  `.openpod/` to detect, so with `$OPENPOD_HOME` set init refuses with a
+  structured `init_needs_home` error unless given an explicit `--home`
+  (or the cwd already lies inside the env workspace — nothing to
+  disambiguate, and the output then says `(via $OPENPOD_HOME)`).
 
 ### Added
 - **The pixel gate: burn refuses `needs_decision` on an unconfigured
