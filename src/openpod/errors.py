@@ -171,6 +171,53 @@ class CaptionsUnavailable(OpenPodError):
         }
 
 
+class WorkspaceMismatchError(OpenPodError):
+    """``$OPENPOD_HOME`` and the current directory name different libraries.
+
+    Raised instead of writing: a stale ``OPENPOD_HOME`` in a shell profile
+    once routed three agents' catches into the production library while
+    each sat inside its own freshly-initialized test workspace — silently,
+    because the env var wins resolution and nothing pointed at the loser.
+    Reads survive with a warning; a write must say which library it is for
+    via an explicit ``--home``.
+    """
+
+    code = "workspace_mismatch"
+
+    def __init__(self, env_root, cwd_root) -> None:
+        self.env_root, self.cwd_root = str(env_root), str(cwd_root)
+        super().__init__(
+            f"refusing to write: $OPENPOD_HOME points at {self.env_root} "
+            f"but the current directory belongs to a different workspace "
+            f"at {self.cwd_root}. Re-run with --home <path> to say which "
+            f"library this write is for."
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": self.code,
+            "env_root": self.env_root,
+            "cwd_root": self.cwd_root,
+            "options": [
+                {"option": "use_cwd_workspace",
+                 "description": "The library in the current directory is "
+                                "the target — re-run with "
+                                f"--home {self.cwd_root}"},
+                {"option": "use_env_workspace",
+                 "description": "The $OPENPOD_HOME library really is the "
+                                "target — re-run with "
+                                f"--home {self.env_root}"},
+            ],
+            "next_step": (
+                "Two different libraries are in play: $OPENPOD_HOME names "
+                "one, the current directory belongs to another. If it is "
+                "not obvious which the user means, ask — then re-run with "
+                "an explicit --home. Never guess: a write into the wrong "
+                "library is silent and expensive to undo."
+            ),
+        }
+
+
 class UnsupportedFormatError(OpenPodError):
     """Content whose type OpenPod does not (deliberately) support."""
 

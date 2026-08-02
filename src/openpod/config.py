@@ -7,6 +7,13 @@ it anywhere. Resolution order for the workspace root:
 2. ``$OPENPOD_HOME`` if set.
 3. The nearest ancestor directory that already contains ``.openpod/``.
 4. The current working directory (a new library is created here on first write).
+
+When rule 2 wins *and* the current directory belongs to a different
+workspace, the resolved :class:`Workspace` records the loser in
+``cwd_conflict`` — the CLI turns that into a warning on reads and a refusal
+on writes. A stale ``OPENPOD_HOME`` in a shell profile once sent three
+agents' catches into the production library while each sat inside its own
+freshly-initialized test workspace; nobody noticed until forensics.
 """
 
 from __future__ import annotations
@@ -125,10 +132,28 @@ class Workspace:
     """
 
     def __init__(self, root: Optional[os.PathLike | str] = None) -> None:
+        # origin: how the root was chosen — "arg" (explicit), "env"
+        # ($OPENPOD_HOME), or "cwd" (walk-up / current directory).
+        # cwd_conflict: set only when $OPENPOD_HOME won resolution while the
+        # current directory belongs to a DIFFERENT workspace — the situation
+        # where a write lands somewhere the caller can't see.
+        self.origin = "cwd"
+        self.cwd_conflict: Optional[Path] = None
         if root is not None:
+            self.origin = "arg"
             self.root = Path(root).expanduser().resolve()
         elif os.environ.get("OPENPOD_HOME"):
+            self.origin = "env"
             self.root = Path(os.environ["OPENPOD_HOME"]).expanduser().resolve()
+            try:
+                local = _find_existing(Path.cwd())
+            except OSError:
+                local = None
+            # ~/.openpod is the global persona layer, not a rival library —
+            # a walk-up that lands on the home directory is no conflict.
+            if (local is not None and local != self.root
+                    and local != Path.home()):
+                self.cwd_conflict = local
         else:
             self.root = _find_existing(Path.cwd()) or Path.cwd().resolve()
 

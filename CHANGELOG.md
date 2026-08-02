@@ -6,6 +6,27 @@ All notable changes to OpenPod are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **The workspace mismatch guard: `$OPENPOD_HOME` vs. the current
+  directory.** When the env var wins workspace resolution but the current
+  directory belongs to a *different* workspace, read commands print a
+  one-line warning to stderr (`workspace: <env path> via OPENPOD_HOME —
+  NOTE: current directory has its own workspace at <cwd path>`) and write
+  commands (`catch`, `clip`, `init`, `settings <key> <value>`, `note`,
+  `follow`, `import`, `reindex`, …) refuse with a structured
+  `workspace_mismatch` error carrying both roots — an explicit `--home`
+  is the only way to say which library the write is for. Field incident:
+  a stale `OPENPOD_HOME` in a shell profile routed three agents' catches
+  into the production library while each sat inside its own
+  freshly-initialized test workspace; nobody noticed until forensics.
+  The guard classifies the *invocation*, not the command name
+  (`settings key` reads, `settings key value` writes), never fires when
+  a root is passed explicitly (so MCP servers, whose cwd is meaningless
+  and who pass `OPENPOD_HOME` as an argument, are untouched), and treats
+  `~/.openpod` — the global persona layer — as no rival. `openpod init`
+  now also says `(via $OPENPOD_HOME)` when the env var chose where the
+  workspace landed.
+
+### Added
 - **The pixel gate: burn refuses `needs_decision` on an unconfigured
   workspace.** A burn requested (by argument or settings) before first-use
   setup no longer produces a file with baked-in defaults — it raises a

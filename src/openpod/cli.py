@@ -45,8 +45,25 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 1
 
 
-def _ws(args) -> Workspace:
-    return Workspace(getattr(args, "home", None))
+def _ws(args, write: bool = False) -> Workspace:
+    """Resolve the workspace and enforce the $OPENPOD_HOME ↔ cwd guard.
+
+    When the env var wins resolution but the current directory belongs to a
+    different workspace, reads print a one-line warning (stderr, so --json
+    stdout stays parseable) and writes refuse with a structured error — an
+    explicit --home is the only way to say "yes, that library". Pass
+    ``write=True`` for the invocation *as parsed*, not the command name:
+    ``settings key value`` writes, ``settings key`` reads."""
+    ws = Workspace(getattr(args, "home", None))
+    if ws.cwd_conflict is not None:
+        if write:
+            from .errors import WorkspaceMismatchError
+
+            raise WorkspaceMismatchError(ws.root, ws.cwd_conflict)
+        print(f"workspace: {ws.root} via OPENPOD_HOME — NOTE: current "
+              f"directory has its own workspace at {ws.cwd_conflict}",
+              file=sys.stderr)
+    return ws
 
 
 _DEFAULT_BRIDGE_PORT = 8788
@@ -89,7 +106,7 @@ def _cmd_catch(args) -> int:
     from .catch import catch
     from .persona import Persona
 
-    ws = _ws(args)
+    ws = _ws(args, write=True)
     asr = "auto"
     if getattr(args, "asr_now", False) or args.force_asr:
         asr = "now"
@@ -209,7 +226,8 @@ def _cmd_clip(args) -> int:
         video = False
     elif getattr(args, "video", False):
         video = True
-    result = clip(args.entry_id, args.start, args.end, workspace=_ws(args),
+    result = clip(args.entry_id, args.start, args.end,
+                  workspace=_ws(args, write=True),
                   snap=not args.no_snap, audio_path=args.audio,
                   reencode=args.reencode, video=video,
                   captions=args.captions, lang=args.lang,
@@ -268,7 +286,8 @@ def _cmd_captions(args) -> int:
     from .captions import export_captions, parse_srt, verify_coverage
     from .library import Library
 
-    entry = Library(_ws(args)).get(args.entry_id)
+    ws = _ws(args, write=not args.verify)  # --verify only reads
+    entry = Library(ws).get(args.entry_id)
     if entry is None:
         print(f"error: no caught episode with id {args.entry_id!r}", file=sys.stderr)
         return 1
@@ -288,7 +307,7 @@ def _cmd_captions(args) -> int:
         from .captions import word_timings_for_clip
         from .media import get_media
 
-        m = get_media(entry.entry_id, entry.source(), workspace=_ws(args))
+        m = get_media(entry.entry_id, entry.source(), workspace=ws)
         words = word_timings_for_clip(m.path, args.start, args.end)
         wpath = r.path.with_suffix(".words.json")
         wpath.write_text(json.dumps(words, ensure_ascii=False), encoding="utf-8")
@@ -306,10 +325,10 @@ def _cmd_init(args) -> int:
     user's — never clobbered without --force."""
     from .agents_doc import AGENTS_BASENAME, agents_md_text
 
-    ws = _ws(args)
     if args.print:
         print(agents_md_text())
         return 0
+    ws = _ws(args, write=True)
     created = not ws.exists()
     ws.ensure()
     target = ws.root / AGENTS_BASENAME
@@ -320,13 +339,14 @@ def _cmd_init(args) -> int:
         return 1
     target.write_text(agents_md_text(), encoding="utf-8")
     print(f"workspace: {theme.path(str(ws.dot))}"
+          + (" (via $OPENPOD_HOME)" if ws.origin == "env" else "")
           + ("" if created else " (already existed)"))
     print(f"agent contract: {theme.path(str(target))}")
     return 0
 
 
 def _cmd_settings(args) -> int:
-    ws = _ws(args)
+    ws = _ws(args, write=bool(args.key and args.value is not None))
     if args.key and args.value is not None:
         value: object = args.value
         if value in ("true", "false"):
@@ -344,7 +364,7 @@ def _cmd_settings(args) -> int:
 def _cmd_doctor(args) -> int:
     from .doctor import check
 
-    report = check(_ws(args), fix=args.fix)
+    report = check(_ws(args, write=args.fix), fix=args.fix)
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
     else:
@@ -371,7 +391,7 @@ def _cmd_doctor(args) -> int:
 def _cmd_summary(args) -> int:
     from .library import Library
 
-    library = Library(_ws(args))
+    library = Library(_ws(args, write=bool(args.entry_id and args.from_file)))
 
     if not args.entry_id:
         # Recall listing across the library.
@@ -420,7 +440,7 @@ def _cmd_export(args) -> int:
 def _cmd_follow(args) -> int:
     from .follows import Follows
 
-    ws = _ws(args)
+    ws = _ws(args, write=True)
     f = Follows(ws).add(args.url, title=args.title)
     print(f"following: {f.title or f.url} ({f.kind})")
     print(f"  wrote: {theme.path(str(ws.follows_file))}")
@@ -430,7 +450,7 @@ def _cmd_follow(args) -> int:
 def _cmd_unfollow(args) -> int:
     from .follows import Follows
 
-    ws = _ws(args)
+    ws = _ws(args, write=True)
     removed = Follows(ws).remove(args.url)
     if removed:
         print(theme.ok("unfollowed"))
@@ -480,7 +500,14 @@ def _cmd_digest(args) -> int:
 def _cmd_persona(args) -> int:
     from .persona import Persona
 
-    persona = Persona(_ws(args))
+    # Only the invocations that touch workspace files count as writes; the
+    # global layer (~/.openpod) is the same file whichever workspace wins.
+    writes = (
+        (args.action == "init" and not getattr(args, "global_layer", False))
+        or args.action == "derive"
+        or (args.action == "split" and bool(args.to_global))
+    )
+    persona = Persona(_ws(args, write=writes))
     if args.action == "init":
         if getattr(args, "global_layer", False):
             p = persona.init_global(force=args.force)
@@ -536,7 +563,8 @@ def _cmd_persona(args) -> int:
 def _cmd_import(args) -> int:
     from .imports import import_opml
 
-    result = import_opml(args.file, workspace=_ws(args), label=args.label)
+    result = import_opml(args.file, workspace=_ws(args, write=True),
+                         label=args.label)
     if args.json:
         print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
         return 0
@@ -552,7 +580,7 @@ def _cmd_import(args) -> int:
 def _cmd_note(args) -> int:
     from .library import Library
 
-    entry = Library(_ws(args)).get(args.entry_id)
+    entry = Library(_ws(args, write=True)).get(args.entry_id)
     if entry is None:
         raise ValueError(
             f"no caught episode with id {args.entry_id!r} — "
@@ -608,7 +636,7 @@ def _cmd_list(args) -> int:
 def _cmd_reindex(args) -> int:
     from .search import reindex
 
-    ws = _ws(args)
+    ws = _ws(args, write=True)
     n = reindex(ws)
     print(f"reindexed {n} cues\n  wrote: {theme.path(str(ws.index_db))}")
     return 0
@@ -617,7 +645,7 @@ def _cmd_reindex(args) -> int:
 def _cmd_render(args) -> int:
     from .transcript_md import render_entry
 
-    path = render_entry(args.entry, workspace=_ws(args))
+    path = render_entry(args.entry, workspace=_ws(args, write=True))
     print(f"transcript.md: {theme.path(str(path))}")
     return 0
 
@@ -625,8 +653,10 @@ def _cmd_render(args) -> int:
 def _cmd_sync(args) -> int:
     from . import sync as sync_mod
 
-    ws = _ws(args)
     action = getattr(args, "sync_action", None)
+    # login writes the credentials file into the workspace; push only reads
+    # local artifacts (the remote side is the player's problem).
+    ws = _ws(args, write=action == "login")
 
     if action == "login":
         def _prompt(user_code: str, uri: str) -> None:
@@ -663,7 +693,7 @@ def _cmd_sync(args) -> int:
 def _cmd_pull(args) -> int:
     from . import sync as sync_mod
 
-    ws = _ws(args)
+    ws = _ws(args, write=True)
     if getattr(args, "heard", False):
         r = sync_mod.pull_heard(ws)
         if r.get("unavailable"):
@@ -693,7 +723,7 @@ def _cmd_pull(args) -> int:
 def _cmd_import_heard(args) -> int:
     from . import sync as sync_mod
 
-    ws = _ws(args)
+    ws = _ws(args, write=True)
     r = sync_mod.import_heard(ws, args.file)
     print(theme.ok(f"imported from {r['source']}"))
     print(f"  heard cues: {r['heard']} → {r['entries_written']} episodes")
