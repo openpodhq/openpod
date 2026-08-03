@@ -67,8 +67,13 @@ def _atomic_write(path: Path, text: str, *, mode: int = 0o600) -> None:
 
 
 def _load_manifest() -> dict[str, dict]:
-    """Map action name -> spec, from the checked-in copy of the player manifest
-    (generated from app/src/agent/manifest.ts — keep them in step)."""
+    """Map action name -> spec, from the checked-in copy of the player manifest.
+
+    A byte-for-byte copy of the player's generated docs/agent-manifest.json
+    (itself rendered from app/src/agent/manifest.ts). Each entry becomes one
+    ``player_*`` MCP tool, so a stale copy costs agents whole tools silently —
+    tests/test_player_manifest_parity.py is what keeps the two in step.
+    """
     data = json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
     return {t["name"]: t for t in data.get("tools", [])}
 
